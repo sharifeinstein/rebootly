@@ -36,7 +36,7 @@ Start M2 (copy engine, SPEC §3.5, §3.6, §10, §13). First task: add `crates/m
 
 ## Decisions log
 - 2026-11-09: Own read-only regf parser instead of `nt-hive` — nt-hive is GPL-2.0-or-later, which would force the whole tool to GPL; SPEC allowed "or our own". SPEC §2 updated.
-- 2026-11-09: License provisionally `MIT OR Apache-2.0` in Cargo.toml (SPEC says TBD). Owner to confirm before first release.
+- 2026-11-09: License is Apache-2.0 (owner decision). `LICENSE` added; Cargo.toml and SPEC §2 updated. Dependencies must be Apache-2.0-compatible (enforce with cargo-deny).
 - 2026-11-09: Fixtures are synthetic hives from a test-only writer (`hive::writer`, feature `fixtures`), committed under `tests/fixtures/` and checked for drift by a test. The writer only creates new files; the tool never writes hives to a source disk.
 - 2026-11-09: `S-1-5-21` accounts are reported as `local/domain`. Telling local from AD-domain offline needs the machine SID from SECURITY/SAM; deferred rather than guessed. Microsoft accounts are detected via NTUSER `IdentityCRL\UserExtendedProperties`; Entra ID via SID prefix `S-1-12-1-`.
 - 2026-11-09: `ProfileList\*.bak` entries are skipped and listed as skipped, alongside S-1-5-18/19/20.

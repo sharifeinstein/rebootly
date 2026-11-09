@@ -33,7 +33,7 @@ Microsoft removed Windows 11's local PC-to-PC Migration (Oct 2026 Patch Tuesday,
 - **Registry hives:** a pure-Rust offline hive parser, used in **all** modes. **Our own** read-only parser (`migrate-core::hive`); `nt-hive` was rejected because it is GPL-2.0-or-later (decided M1, see PROGRESS.md). It is cross-platform and also covers users who aren't logged in. In live mode the Win32 API is a cross-check only.
 - **Serialization:** `serde` with YAML for packs and JSON for the manifest.
 - **Targets:** `x86_64-pc-windows-msvc` (+crt-static), `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-musl`.
-- **License:** TBD (MIT/Apache-2.0 suggested). Track dependency licenses with `cargo-deny`.
+- **License:** Apache-2.0 (decided 2026-11-09). Track dependency licenses with `cargo-deny`.
 
 ### Workspace layout
 
