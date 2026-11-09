@@ -1,6 +1,6 @@
 [package]
-name = "migrate-core"
-description = "Engine for migrate: hive parser, Source trait, resolver, manifest"
+name = "rebootly-core"
+description = "Engine for Rebootly: hive parser, Source trait, resolver, manifest"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,7 +12,7 @@ serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-migrate-core = { path = ".", features = ["fixtures"] }
+rebootly-core = { path = ".", features = ["fixtures"] }
 serde_json.workspace = true
 
 [lints]

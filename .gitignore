@@ -4,4 +4,4 @@
 /SPEC.md
 /KICKOFF_PROMPT.md
 # Sync bundle used to mirror the tree from the Claude workspace.
-/.migrate-sync.tar
+/.rebootly-sync.tar

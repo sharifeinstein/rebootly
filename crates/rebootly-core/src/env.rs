@@ -15,7 +15,7 @@ impl Environment {
     ///
     /// WinPE is identified by `HKLM\SYSTEM\CurrentControlSet\Control\MiniNT`.
     /// Core has no Win32 bindings, so it asks `reg.exe` (present in WinPE);
-    /// migrate-win may replace this with a direct API call in M4/M7.
+    /// rebootly-win may replace this with a direct API call in M4/M7.
     pub fn detect() -> Self {
         #[cfg(windows)]
         {

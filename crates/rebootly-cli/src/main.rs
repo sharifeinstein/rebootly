@@ -1,4 +1,4 @@
-//! `migrate` command-line interface (thin layer over migrate-core).
+//! `rebootly` command-line interface (thin layer over rebootly-core).
 
 mod render;
 
@@ -6,11 +6,11 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use migrate_core::OfflineVolume;
-use migrate_core::install::WindowsInstall;
+use rebootly_core::OfflineVolume;
+use rebootly_core::install::WindowsInstall;
 
 #[derive(Parser)]
-#[command(name = "migrate", version, about = "Portable PC migration and backup")]
+#[command(name = "rebootly", version, about = "Portable PC migration and backup")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -55,7 +55,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 (None, true) => anyhow::bail!("give --windows-root <PATH> or --scan <DIR>..."),
             };
             let src = OfflineVolume::open(&root)?;
-            let report = migrate_core::inspect::inspect(&src)?;
+            let report = rebootly_core::inspect::inspect(&src)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {

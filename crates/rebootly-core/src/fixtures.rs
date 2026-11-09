@@ -1,7 +1,7 @@
 //! Deterministic fake Windows volumes for tests (feature `fixtures`).
 //!
 //! Regenerate the committed copy with:
-//! `cargo run -p migrate-core --example gen_fixtures --features fixtures`
+//! `cargo run -p rebootly-core --example gen_fixtures --features fixtures`
 //!
 //! These are synthetic hives. Real Win10/Win11/Entra hives from VMs should be
 //! added alongside them (see PROGRESS.md known issues).

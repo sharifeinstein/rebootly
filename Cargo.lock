@@ -180,49 +180,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "migrate-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "migrate-core",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "migrate-core"
-version = "0.1.0"
-dependencies = [
- "migrate-core",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "migrate-linux"
-version = "0.1.0"
-dependencies = [
- "migrate-core",
-]
-
-[[package]]
-name = "migrate-tui"
-version = "0.1.0"
-dependencies = [
- "migrate-core",
-]
-
-[[package]]
-name = "migrate-win"
-version = "0.1.0"
-dependencies = [
- "migrate-core",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -257,6 +214,49 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "rebootly-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "rebootly-core",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "rebootly-core"
+version = "0.1.0"
+dependencies = [
+ "rebootly-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "rebootly-linux"
+version = "0.1.0"
+dependencies = [
+ "rebootly-core",
+]
+
+[[package]]
+name = "rebootly-tui"
+version = "0.1.0"
+dependencies = [
+ "rebootly-core",
+]
+
+[[package]]
+name = "rebootly-win"
+version = "0.1.0"
+dependencies = [
+ "rebootly-core",
+]
 
 [[package]]
 name = "rustix"

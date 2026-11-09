@@ -1,4 +1,4 @@
-//! Core engine for `migrate` (see docs/SPEC.md).
+//! Core engine for `rebootly` (see docs/SPEC.md).
 //!
 //! Everything here is platform-neutral and must build and test on Linux.
 

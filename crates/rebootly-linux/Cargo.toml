@@ -1,13 +1,13 @@
 [package]
-name = "migrate-tui"
-description = "Primary interactive ratatui front end (M6)"
+name = "rebootly-linux"
+description = "Linux recovery backend: volume discovery, BitLocker unlock, read-only mount (M7)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-migrate-core.workspace = true
+rebootly-core.workspace = true
 
 [lints]
 workspace = true

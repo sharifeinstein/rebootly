@@ -1,7 +1,7 @@
 //! The `Source` abstraction (SPEC §3.2) and its offline implementation.
 //!
 //! Packs, manifest and copy engine talk only to `dyn Source`. `LiveWindows`
-//! (migrate-win, M4) will implement the same trait. Installed-app listing
+//! (rebootly-win, M4) will implement the same trait. Installed-app listing
 //! joins the trait in M3/M4 together with its first real implementation.
 
 use std::fs::File;

@@ -2,12 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-use migrate_core::folders::FolderOrigin;
-use migrate_core::inspect::{UserReport, inspect};
-use migrate_core::install::WindowsInstall;
-use migrate_core::profiles::AccountKind;
-use migrate_core::winpath::Mapped;
-use migrate_core::{OfflineVolume, Source};
+use rebootly_core::folders::FolderOrigin;
+use rebootly_core::inspect::{UserReport, inspect};
+use rebootly_core::install::WindowsInstall;
+use rebootly_core::profiles::AccountKind;
+use rebootly_core::winpath::Mapped;
+use rebootly_core::{OfflineVolume, Source};
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/win11-basic")
@@ -20,14 +20,14 @@ fn user<'a>(users: &'a [UserReport], name: &str) -> &'a UserReport {
         .unwrap()
 }
 
-fn folder<'a>(u: &'a UserReport, name: &str) -> &'a migrate_core::source::ResolvedFolder {
+fn folder<'a>(u: &'a UserReport, name: &str) -> &'a rebootly_core::source::ResolvedFolder {
     u.folders.iter().find(|f| f.path.name == name).unwrap()
 }
 
 #[test]
 fn committed_fixture_matches_generator() {
     let tmp = tempfile::tempdir().unwrap();
-    migrate_core::fixtures::build_win11_basic(tmp.path()).unwrap();
+    rebootly_core::fixtures::build_win11_basic(tmp.path()).unwrap();
     let mut checked = 0;
     for rel in walk(tmp.path()) {
         let fresh = std::fs::read(tmp.path().join(&rel)).unwrap();

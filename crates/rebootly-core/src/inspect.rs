@@ -1,4 +1,4 @@
-//! `migrate inspect`: a serialisable snapshot of what the resolver found.
+//! `rebootly inspect`: a serialisable snapshot of what the resolver found.
 
 use serde::Serialize;
 

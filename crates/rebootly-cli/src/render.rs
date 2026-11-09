@@ -3,9 +3,9 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use migrate_core::folders::FolderOrigin;
-use migrate_core::inspect::{InspectReport, UserReport};
-use migrate_core::winpath::Mapped;
+use rebootly_core::folders::FolderOrigin;
+use rebootly_core::inspect::{InspectReport, UserReport};
+use rebootly_core::winpath::Mapped;
 
 fn local(m: &Mapped, root: &Path) -> String {
     match m {

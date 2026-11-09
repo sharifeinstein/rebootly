@@ -1,4 +1,4 @@
-# SPEC — Portable PC Migration & Backup Tool (working name: `migrate`)
+# SPEC — Portable PC Migration & Backup Tool (name: **Rebootly**, binary `rebootly`)
 
 > Source of truth for the project. Keep in the repo at `docs/SPEC.md`.
 > Read only the sections relevant to the current milestone.
@@ -30,7 +30,7 @@ Microsoft removed Windows 11's local PC-to-PC Migration (Oct 2026 Patch Tuesday,
 
 - **Language: Rust.** Reasons: static single binaries for Windows (static CRT) and Linux (musl); Microsoft's `windows` crate for Win32/COM; memory safety for a tool that touches every user file; C#/.NET is unusable in WinPE.
 - **UI:** `ratatui` TUI is the primary interface, because it works in a WinPE console, a Linux TTY and over SSH. An optional Slint GUI for live Windows comes later, on the same core.
-- **Registry hives:** a pure-Rust offline hive parser, used in **all** modes. **Our own** read-only parser (`migrate-core::hive`); `nt-hive` was rejected because it is GPL-2.0-or-later (decided M1, see PROGRESS.md). It is cross-platform and also covers users who aren't logged in. In live mode the Win32 API is a cross-check only.
+- **Registry hives:** a pure-Rust offline hive parser, used in **all** modes. **Our own** read-only parser (`rebootly-core::hive`); `nt-hive` was rejected because it is GPL-2.0-or-later (decided M1, see PROGRESS.md). It is cross-platform and also covers users who aren't logged in. In live mode the Win32 API is a cross-check only.
 - **Serialization:** `serde` with YAML for packs and JSON for the manifest.
 - **Targets:** `x86_64-pc-windows-msvc` (+crt-static), `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-musl`.
 - **License:** Apache-2.0 (decided 2026-11-09). Track dependency licenses with `cargo-deny`.
@@ -38,14 +38,14 @@ Microsoft removed Windows 11's local PC-to-PC Migration (Oct 2026 Patch Tuesday,
 ### Workspace layout
 
 ```
-migrate/
+rebootly/
 ├─ crates/
-│  ├─ migrate-core/    # engine, Source trait, packs, manifest, hive parser, resolver, copy/verify, report
-│  ├─ migrate-win/     # VSS, KnownFolder API, live registry, SeBackupPrivilege, manage-bde, winget, netsh
-│  ├─ migrate-linux/   # volume discovery, BitLocker unlock (cryptsetup/dislocker), ro mount
-│  ├─ migrate-cli/     # thin CLI (scripting, tests, IT techs)
-│  └─ migrate-tui/     # primary interactive front end
-│  (migrate-gui/ later — Slint, live Windows only)
+│  ├─ rebootly-core/    # engine, Source trait, packs, manifest, hive parser, resolver, copy/verify, report
+│  ├─ rebootly-win/     # VSS, KnownFolder API, live registry, SeBackupPrivilege, manage-bde, winget, netsh
+│  ├─ rebootly-linux/   # volume discovery, BitLocker unlock (cryptsetup/dislocker), ro mount
+│  ├─ rebootly-cli/     # thin CLI (scripting, tests, IT techs)
+│  └─ rebootly-tui/     # primary interactive front end
+│  (rebootly-gui/ later — Slint, live Windows only)
 ├─ packs/              # built-in app packs (YAML), shipped beside the binary
 ├─ rescue/             # Ventoy layout, Alpine build script, WinPE build script
 ├─ tests/fixtures/     # sample hives, fake profile trees
@@ -137,7 +137,7 @@ Browser/app passwords (prompt for a CSV export in live mode, **import then secur
 - **Remapping:** old user → new user (different username/SID), drive letters, OneDrive on or off, KNOWNFOLDERID → new path.
 - **Path rewriting** inside text configs that packs declare (`rewrite: true`): replace `C:\Users\olduser` with the new profile path (VS Code settings, `.gitconfig`, Steam `libraryfolders.vdf`, etc.). Back up the original first.
 - **Conflict policy** (global + per category): skip / overwrite if newer / keep both (`name (migrated).ext`) / ask. **Dry run** shows every action before anything is written.
-- **Undo:** every overwritten file is saved first to `%USERPROFILE%\.migrate-undo\<job>\`, so a restore can be rolled back.
+- **Undo:** every overwritten file is saved first to `%USERPROFILE%\.rebootly-undo\<job>\`, so a restore can be rolled back.
 - **Version gating:** packs and registry items can be marked `os: [win10, win11]` and `min_app_version`. Win10 → Win11 skips keys that don't apply.
 
 ---
@@ -200,11 +200,11 @@ USB (Ventoy)
 ├─ [Ventoy EFI partition]
 └─ VENTOY (exFAT data partition)
    ├─ iso/
-   │  ├─ migrate-rescue-alpine.iso   # built by rescue/alpine/build.sh: ntfs3, cryptsetup, dislocker, auto-starts TUI
-   │  └─ winpe-migrate.iso           # user-built via rescue/winpe/build.cmd (ADK + WinPE add-on)
-   ├─ bin/win-x64/migrate.exe
-   ├─ bin/win-arm64/migrate.exe
-   ├─ bin/linux-x64/migrate
+   │  ├─ rebootly-rescue-alpine.iso   # built by rescue/alpine/build.sh: ntfs3, cryptsetup, dislocker, auto-starts TUI
+   │  └─ winpe-rebootly.iso           # user-built via rescue/winpe/build.cmd (ADK + WinPE add-on)
+   ├─ bin/win-x64/rebootly.exe
+   ├─ bin/win-arm64/rebootly.exe
+   ├─ bin/linux-x64/rebootly
    ├─ packs/
    ├─ backups/<MACHINE>_<YYYY-MM-DD_HHMM>/
    ├─ start.cmd / start.sh           # pick the right binary
@@ -214,7 +214,7 @@ USB (Ventoy)
 - **WinPE is not redistributable** (license): ship the build script (`copype`, add `WinPE-SecureStartup`, `WinPE-WMI`, `WinPE-Scripting`, networking; `startnet.cmd` launches the TUI from the stick), not the image.
 - The Alpine image is built from an open-source script and is fine to distribute (it includes GPL tools, so attach source/notices).
 - Secure Boot: Ventoy needs its MOK enrolled once, or the user disables Secure Boot. Document both.
-- In WinPE/Alpine the tool finds its own stick by looking for a marker file (`.migrate-root`).
+- In WinPE/Alpine the tool finds its own stick by looking for a marker file (`.rebootly-root`).
 
 ---
 
@@ -278,7 +278,7 @@ Incremental/scheduled backups with a content-addressed store and dedup; zstd com
 ---
 
 ## 14. Milestones
-1. **M1 Core resolver:** workspace scaffold, hive parser integration, `ProfileList` + `User Shell Folders` resolution with env expansion, dirty-hive detection. CLI `migrate inspect --windows-root <path>` prints users and real folder paths. Tests on fixture hives.
+1. **M1 Core resolver:** workspace scaffold, hive parser integration, `ProfileList` + `User Shell Folders` resolution with env expansion, dirty-hive detection. CLI `rebootly inspect --windows-root <path>` prints users and real folder paths. Tests on fixture hives.
 2. **M2 Copy engine:** read-only, priority-ordered, no reparse traversal, retry and continue, hashing, manifest, resume, exclusions, pre-flight checks. CLI `backup` (Tier 1 only).
 3. **M3 Packs:** schema, loader, detection, the first 8 packs, custom folders, path-rewrite metadata.
 4. **M4 Live Windows:** SeBackupPrivilege, VSS, KnownFolder cross-check, OneDrive placeholders, winget/netsh/printers/tasks capture, sleep prevention, sensitive bundle encryption.

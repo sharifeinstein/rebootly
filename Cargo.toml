@@ -7,10 +7,10 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
-repository = "https://github.com/TBD/migrate"
+repository = "https://github.com/sharifeinstein/rebootly"
 
 [workspace.dependencies]
-migrate-core = { path = "crates/migrate-core" }
+rebootly-core = { path = "crates/rebootly-core" }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
