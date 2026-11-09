@@ -127,6 +127,8 @@ Desktop, Documents, Downloads (optional), Pictures, Music, Videos, Favorites, Li
 | Power plan | `powercfg /export` | — | `powercfg /import` |
 | Drivers | `pnputil /export-driver` (reference only) | — | never auto-install |
 
+Implemented (M4, part 1): `system/hosts`; scheduled tasks outside `Tasks\Microsoft` → `system/tasks/`; Wi-Fi profile XMLs (offline) → the sensitive bundle only (`system/wifi/`); `system/apps.json` (machine-wide Uninstall entries). Live only: `system/winget.json` (`winget export --include-versions`), `system/printers.json` (`Get-Printer`), and with `--sensitive` `netsh wlan export profile key=clear` into the bundle (`system/wifi-export/`; the clear-text XMLs exist only in a private temp folder during the job). Each command has a 180 s timeout; failures become warnings. `--no-system` leaves all of this out.
+
 ### Tier 5 — cannot migrate → "Manual steps" checklist
 Browser/app passwords (prompt for a CSV export in live mode, **import then securely delete**; or use browser sync), Credential Manager entries (`cmdkey /list` names only), software licenses/activation (list + **"deactivate on the old PC now"** prompt in live mode: Adobe, iTunes, Office, etc.), Store app data (except known packs), Windows Hello/TPM, BitLocker (remind to save the recovery key), offline Wi-Fi keys.
 

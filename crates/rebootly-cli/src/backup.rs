@@ -68,6 +68,9 @@ pub struct BackupArgs {
     /// Passphrase for `--sensitive`, read from the first line of this file.
     #[arg(long, value_name = "FILE", requires = "sensitive")]
     pub passphrase_file: Option<PathBuf>,
+    /// Leave out system items (hosts, scheduled tasks, Wi-Fi, apps.json).
+    #[arg(long)]
+    pub no_system: bool,
     /// Show the pre-flight check and stop.
     #[arg(long)]
     pub preflight: bool,
@@ -129,6 +132,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         root_folders: a.root_folders,
         custom: a.custom,
         sensitive_bundle: a.sensitive,
+        no_system: a.no_system,
     };
     let plan = backup::plan(src, &opts)?;
     print_detected(&plan);

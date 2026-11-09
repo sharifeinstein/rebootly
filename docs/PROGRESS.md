@@ -21,13 +21,13 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M4 — in progress (LiveWindows, sensitive bundle, OneDrive skip done; not yet run on real Windows)
+Current milestone: M4 — in progress (LiveWindows, sensitive bundle, OneDrive skip, Tier 4 file items + live captures done; not yet run on real Windows)
 Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), sensitive.age, online-only OneDrive files skipped, case-insensitive skip set (fixed a plain-copy leak of sensitive paths on Windows)
 
 ## Next step
-1. **User, on the Windows PC (PowerShell, elevated for the live commands):** `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; then `target\release\rebootly inspect --live`, `rebootly backup --live --preflight --target E:\` and, if that looks right, a small real run, e.g. `rebootly backup --live --target E:\ --folder Desktop --sensitive`. Paste the output (and any failed files from report.txt) back.
-2. Fix whatever that turns up (first real run of RegSaveKeyExW snapshots, backup-semantics reads, the KnownFolder cross-check).
-3. Then the rest of M4: VSS for locked files (needs the `windows` crate's COM bindings or WMI `Win32_ShadowCopy`), Tier 4 live capture (winget export, netsh wlan export into the sensitive bundle, printers, non-Microsoft scheduled tasks, hosts), the OneDrive `hydrate` policy, ADS recording, and target filesystem type on Windows.
+1. **Optional, whenever convenient (user, PowerShell):** `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; from an elevated prompt `rebootly inspect --live` and `rebootly backup --live --preflight --target D:\x`. Neither copies anything (preflight runs winget/Get-Printer once). The user doesn't want a full backup on this machine, so real-run testing waits for a test PC or VM.
+2. Rest of M4: VSS for locked files (`windows` crate COM `IVssBackupComponents`, or WMI `Win32_ShadowCopy.Create`), the OneDrive `hydrate` policy, ADS recording (keep all but Zone.Identifier), user certificates (`certutil -user -exportPFX` into the bundle), power plan, VPN `rasphone.pbk`, and target filesystem type on Windows (`GetVolumeInformationW`).
+3. Then M5 restore.
 
 ## Milestones
 - [x] M1 Core resolver
@@ -73,7 +73,11 @@ Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), s
 - 2026-11-09: Online-only cloud files (attributes OFFLINE / RECALL_ON_OPEN / RECALL_ON_DATA_ACCESS) are skipped by default (excluded category + a Manual step), so a live backup never triggers OneDrive downloads.
 - 2026-11-09: dev-dotfiles pack v2: `.azure` and `.kube` exclude caches/logs/extensions.
 
+- 2026-11-09: Tier 4 split: file items (hosts, non-Microsoft tasks, Wi-Fi XMLs, apps.json) are planned in core for both modes; live command captures run through `Source::system_captures` at plan time into a private temp folder (so pre-flight knows their sizes). Wi-Fi of any kind goes only into the encrypted bundle; `netsh … key=clear` runs only with `--sensitive`.
+
 ## Known issues / TODO
+- `Source::system_captures` has no test double yet (planning of captures is covered only by type-checking); winget/netsh/Get-Printer never run for real.
+- `--preflight` in live mode runs winget and Get-Printer (seconds to a minute).
 - Live mode has only been type-checked and run under Wine (elevation + privilege paths), never on real Windows.
 - Locked files in live mode (open PSTs, databases) fail with a sharing violation until VSS lands.
 - Offline, OneDrive placeholders can't be recognised (no attributes on Linux mounts); reading one may return an error or empty data.
@@ -121,7 +125,8 @@ Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), s
 - `rebootly-core::fixtures` — synthetic `win11-basic` volume (feature `fixtures`); `examples/gen_fixtures.rs` regenerates it.
 - `rebootly-cli` — `rebootly inspect …` (`render.rs`) and `rebootly backup --windows-root <p> --target <dir> | --resume <job> [--user] [--folder] [--preflight] [--force] [--jobs N]` (`backup.rs`); `rebootly pack list | validate FILE…` (`pack.rs`).
 - `rebootly-core::source::access` — `VolumeAccess` strategy (`OfflineAccess`), `HiveRef`, `LoadedHive`.
+- `rebootly-core::backup::system` — Tier 4 file items and live captures into the plan.
 - `rebootly-core::backup::sensitive` — `sensitive.age` write/list/extract, `Passphrase`.
-- `rebootly-win::live` (cfg(windows)) — `LiveWindows` (`mod.rs`), `access` (backup-semantics reads, snapshots), `regsave` (RegSaveKeyExW), `token` (elevation, privileges, SID), `knownfolder`, `power` (SleepGuard, on_battery), `wide`.
+- `rebootly-win::live` (cfg(windows)) — `LiveWindows` (`mod.rs`), `access` (backup-semantics reads, snapshots), `regsave` (RegSaveKeyExW), `token` (elevation, privileges, SID), `capture` (winget, Get-Printer, netsh with timeout), `knownfolder`, `power` (SleepGuard, on_battery), `wide`.
 - `rebootly-cli` also: `source.rs` (`--live` / `--windows-root`, keep-awake), `sensitive.rs` (passphrase input, `rebootly sensitive list|extract`).
 - `rebootly-linux`, `rebootly-tui` — placeholders for M7, M6.

@@ -109,7 +109,8 @@ fn full_backup_layout_manifest_and_report() {
     assert!(m.complete);
     let (ok, _, failed) = m.counts();
     assert_eq!(failed, 0);
-    assert_eq!(ok, p.files.len());
+    assert_eq!(ok, p.files.len() + p.generated.len());
+    assert!(job.dir.join("system/apps.json").is_file());
 
     let report = job.dir.join("users/Alice/folders/Documents/report.txt");
     let entry = m
@@ -227,14 +228,15 @@ fn cancel_then_resume_copies_only_the_rest() {
     let m1 = run(&src, &p, &job, &ro, &mut |e| {
         if let Event::File(_) = e {
             seen += 1;
-            if seen == 2 {
+            if seen == 2 + p.generated.len() {
                 cancel.store(true, Ordering::Relaxed);
             }
         }
     })
     .unwrap();
     assert!(!m1.complete && m1.finished.is_none());
-    let done_first = m1.files.len();
+    // Generated files (apps.json) are rewritten on every run, not resumed.
+    let done_first = m1.files.len() - p.generated.len();
     assert!(done_first >= 2 && done_first < p.files.len());
 
     let job2 = Job::resume(&job.dir).unwrap();
@@ -254,7 +256,7 @@ fn cancel_then_resume_copies_only_the_rest() {
     .unwrap();
     assert_eq!(to_copy, p.files.len() + p.generated.len() - done_first);
     assert!(m2.complete);
-    assert_eq!(m2.counts().0, p.files.len());
+    assert_eq!(m2.counts().0, p.files.len() + p.generated.len());
 }
 
 #[test]
@@ -281,3 +283,4 @@ fn folder_filter_limits_plan() {
 mod packs;
 mod sensitive;
 mod snapshot;
+mod system;

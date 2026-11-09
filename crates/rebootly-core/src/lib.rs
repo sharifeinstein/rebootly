@@ -19,7 +19,8 @@ pub mod winpath;
 pub use hive::{Hive, HiveError};
 
 pub use source::{
-    HiveRef, LoadedHive, OfflineAccess, OfflineVolume, Source, SourceError, VolumeAccess,
+    Capture, Captures, HiveRef, LoadedHive, OfflineAccess, OfflineVolume, Source, SourceError,
+    VolumeAccess,
 };
 #[cfg(feature = "fixtures")]
 pub mod fixtures;

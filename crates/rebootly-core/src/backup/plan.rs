@@ -55,6 +55,8 @@ pub struct PlanOptions {
     /// A passphrase will be given: plan `sensitive: true` pack paths into
     /// the encrypted bundle instead of leaving them out.
     pub sensitive_bundle: bool,
+    /// Leave out Tier 4 system items (hosts, tasks, Wi-Fi, apps.json).
+    pub no_system: bool,
 }
 
 #[derive(Debug, Default)]
@@ -232,6 +234,7 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
             &mut seen_roots,
         )?;
     }
+    super::system::plan_system(src, opts, &mut plan, &mut jobs);
     plan_custom(src, opts, &mut plan, &mut jobs, &mut seen_roots);
 
     // Nested planned roots are copied once, by their own job. Filtered (pack)

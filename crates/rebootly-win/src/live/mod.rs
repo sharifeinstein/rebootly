@@ -6,6 +6,7 @@
 //! is needed both for `RegSaveKeyExW` and to read other users' profiles.
 
 mod access;
+mod capture;
 mod knownfolder;
 mod power;
 mod regsave;
@@ -23,7 +24,7 @@ use rebootly_core::install::OsInfo;
 use rebootly_core::profiles::{ProfileDirs, SkippedProfile};
 use rebootly_core::source::{Profile, ResolvedFolder};
 use rebootly_core::winpath::Mapped;
-use rebootly_core::{Hive, HiveRef, OfflineVolume, Source, SourceError};
+use rebootly_core::{Captures, Hive, HiveRef, OfflineVolume, Source, SourceError};
 
 pub use power::{SleepGuard, on_battery};
 
@@ -45,6 +46,7 @@ pub struct LiveWindows {
     inner: OfflineVolume,
     /// SID the process runs as: the only user `SHGetKnownFolderPath` can answer for.
     me: Option<String>,
+    captures: capture::Capturer,
 }
 
 impl LiveWindows {
@@ -59,6 +61,7 @@ impl LiveWindows {
         Ok(LiveWindows {
             inner,
             me: token::current_user_sid().ok(),
+            captures: capture::Capturer::new(),
         })
     }
 }
@@ -120,6 +123,9 @@ impl Source for LiveWindows {
         which: HiveRef<'_>,
     ) -> Result<Option<PathBuf>, SourceError> {
         self.inner.hive_snapshot(file, which)
+    }
+    fn system_captures(&self, sensitive: bool) -> Captures {
+        self.captures.run(sensitive)
     }
 }
 

@@ -106,6 +106,30 @@ pub trait Source: Send + Sync {
     ) -> Result<Option<PathBuf>, SourceError> {
         Ok(None)
     }
+    /// Live-only Tier 4 captures (winget export, Wi-Fi export, printers),
+    /// run now into private temp files. `sensitive`: the bundle is
+    /// available, so captures holding secrets may run. Default: none.
+    fn system_captures(&self, _sensitive: bool) -> Captures {
+        Captures::default()
+    }
+}
+
+/// A file produced by a live command, to back up like a source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Capture {
+    /// Destination in the backup (or in the bundle when `sensitive`).
+    pub dest: String,
+    pub file: PathBuf,
+    /// What produced it, e.g. `winget export`.
+    pub origin: String,
+    pub sensitive: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Captures {
+    pub files: Vec<Capture>,
+    /// Commands that failed or were unavailable (plain language).
+    pub warnings: Vec<String>,
 }
 
 /// Windows installed on a mounted volume (WinPE or Linux; SPEC §7).
