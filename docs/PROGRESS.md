@@ -21,13 +21,13 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M4 — in progress (LiveWindows, sensitive bundle, OneDrive skip, Tier 4 file items + live captures done; not yet run on real Windows)
-Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), sensitive.age, online-only OneDrive files skipped, case-insensitive skip set (fixed a plain-copy leak of sensitive paths on Windows)
+Current milestone: M4 — code complete; waiting for the first run on real Windows (everything live has only been type-checked for Windows and tested through Linux test doubles)
+Last session: 2026-11-09 — M4 part 2: VSS fallback for locked files, `--cloud-files skip|hydrate`, alternate data streams, user certificates, power plan, default apps, driver list, VPN phonebooks, target filesystem type on Windows
 
 ## Next step
-1. **Optional, whenever convenient (user, PowerShell):** `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; from an elevated prompt `rebootly inspect --live` and `rebootly backup --live --preflight --target D:\x`. Neither copies anything (preflight runs winget/Get-Printer once). The user doesn't want a full backup on this machine, so real-run testing waits for a test PC or VM.
-2. Rest of M4: VSS for locked files (`windows` crate COM `IVssBackupComponents`, or WMI `Win32_ShadowCopy.Create`), the OneDrive `hydrate` policy, ADS recording (keep all but Zone.Identifier), user certificates (`certutil -user -exportPFX` into the bundle), power plan, VPN `rasphone.pbk`, and target filesystem type on Windows (`GetVolumeInformationW`).
-3. Then M5 restore.
+1. **User, PowerShell (real Windows):** `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; from an elevated prompt `rebootly inspect --live` and `rebootly backup --live --preflight --target D:\x` (runs winget, Get-Printer, powercfg, dism, pnputil once; copies nothing). Optional: the same with `--sensitive` (also exports Wi-Fi and the user's certificates to a temp folder, then deletes them). Fix whatever that shows, then tick M4.
+2. Real-run tests (VSS on an open PST, streams, hydrate) wait for a test PC or VM; the user doesn't want a full backup on this machine.
+3. Then M5 restore (SPEC §5): read `streams/`, `snapshot`, the Tier 4 files (`powercfg /import`, `netsh wlan add profile`, PFX import with the bundled password).
 
 ## Milestones
 - [x] M1 Core resolver
@@ -75,22 +75,31 @@ Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), s
 
 - 2026-11-09: Tier 4 split: file items (hosts, non-Microsoft tasks, Wi-Fi XMLs, apps.json) are planned in core for both modes; live command captures run through `Source::system_captures` at plan time into a private temp folder (so pre-flight knows their sizes). Wi-Fi of any kind goes only into the encrypted bundle; `netsh … key=clear` runs only with `--sensitive`.
 
+- 2026-11-09: Locked files (sharing/lock violation) switch to a VSS shadow at once; shadows are made lazily per volume through WMI `Win32_ShadowCopy.Create` via PowerShell (no `windows` crate COM bindings), deleted at the end, leftovers of killed runs deleted by the next live run. An `Unsupported` open error (no snapshot possible) fails the file at once with a "close it and --resume" hint. Manifest `snapshot: true`.
+- 2026-11-09: PowerShell scripts are passed with `-EncodedCommand` (UTF-16LE base64), so quoting can't break them.
+- 2026-11-09: Alternate data streams (live): stored as `streams/<dest>/<name>` and listed per file in the manifest; Zone.Identifier dropped unless `--keep-zone-identifier`; streams over 64 MiB listed only.
+- 2026-11-09: `--cloud-files skip|hydrate`; hydrate is live only (CLI refuses it offline, core downgrades with a warning) and pre-flight warns about the download.
+- 2026-11-09: User certificates via `Export-PfxCertificate` (not certutil), bundle only, random PFX password stored inside the bundle; running user only; non-exportable keys → `.cer` + warning. Power plan, default apps and driver list are plain live captures; VPN phonebooks are copied in both modes (per user: windows-shell pack v2; all users: `system/vpn/`).
+- 2026-11-09: `backup::preflight` takes the target filesystem type from the caller (Windows: rebootly-win), else looks it up (Linux). `run.rs` per-file work moved to `backup::filecopy`.
+
 ## Known issues / TODO
-- `Source::system_captures` has no test double yet (planning of captures is covered only by type-checking); winget/netsh/Get-Printer never run for real.
-- `--preflight` in live mode runs winget and Get-Printer (seconds to a minute).
+- None of the live commands (winget, netsh, Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies) has run for real yet. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
+- `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
 - Live mode has only been type-checked and run under Wine (elevation + privilege paths), never on real Windows.
-- Locked files in live mode (open PSTs, databases) fail with a sharing violation until VSS lands.
+- VSS: a shadow copy is ClientAccessible and persists if the process is killed; the next live run deletes it (per-PID ledger in `%TEMP%`). Two live runs at once are not supported.
+- Alternate data streams cost one extra open per file (listing); offline mounts don't expose streams (ntfs-3g `streams_interface=xattr` could, M7).
+- Certificates are exported only for the user running the tool; `--cloud-files` has no "skip the whole OneDrive folder" choice yet.
 - Offline, OneDrive placeholders can't be recognised (no attributes on Linux mounts); reading one may return an error or empty data.
 - In live mode, `dirty::assess` reads `.LOG*` files with a plain open (no backup semantics); harmless for snapshot hives, could under-report on other users' unloaded hives.
 - Hive log **replay** not implemented: dirty hives are detected (seq mismatch, or pending `HvLE` entries in .LOG1/.LOG2) and flagged; the base hive is read. Legacy (pre-8.1) `DIRT` logs are only flagged when seq numbers mismatch.
 - No **real** Win10/Win11/Entra ID hives in fixtures yet. Need sanitized NTUSER.DAT + SOFTWARE + SYSTEM from test VMs (SPEC §13). Parser paths not yet exercised by fixtures: `lf`/`li`/`ri` subkey lists and `db` big-data values (code exists, unit tests only cover `lh`).
-- `cfg(windows)` code is not compile-checked in the cloud workspace (Windows target can't be installed there); CI (`.github/workflows/ci.yml`) covers it once the repo is on GitHub.
+- `cfg(windows)` code is type-checked in the cloud only via `scripts/check-windows.sh` (std built from source); CI (`.github/workflows/ci.yml`) covers it once the repo is on GitHub.
 - Whole hives are read into memory (SOFTWARE can be ~100 MB). Fine for now; consider mmap later.
 - Built-in packs so far: chrome, edge, firefox, vscode, windows-terminal, powershell, dev-dotfiles, notepadpp, windows-shell. The rest of the SPEC §6 v1 list (Brave, Thunderbird, Outlook PST + signatures, Office, JetBrains, Sticky Notes, FileZilla, PuTTY, WinSCP, OBS, Adobe, Steam, Minecraft, My Games, QuickBooks) is M9. Packs have only been checked against synthetic fixtures; verify paths on real Win10/Win11 VMs.
 - Packs can't name HKLM keys. `requires_closed` and `post_restore` are recorded only (used in live mode / restore). `rewrite: true` is metadata for M5.
 - `.reg` export doesn't wrap long hex lines like regedit does; regedit accepts that. Values containing secrets aren't filtered (the allowlist keys hold none).
 - `rebootly inspect` doesn't show packs yet; `backup --preflight` does.
-- Target filesystem type is detected on Linux only (/proc/self/mountinfo). On Windows/WinPE it is unknown, so the FAT32 warning is generic there; rebootly-win should supply it in M4.
+- Target filesystem type: Linux (/proc/self/mountinfo) and live Windows (`GetVolumeInformationW`, passed in by the CLI). WinPE uses the Windows binary, so it is covered too once tested.
 - Large backups: the manifest holds every file in memory and is written as one JSON file (~200 B per file). Fine up to a few hundred thousand files; consider streaming it later.
 - No `report.html` yet (M6), only `report.txt`.
 - SMART check and the `ddrescue` suggestion (SPEC §3.5) aren't implemented; they need platform code (M4/M7).
@@ -123,10 +132,12 @@ Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), s
 - `rebootly-core::regfile` — export HKCU keys to `.reg` (regedit 5.00, UTF-16LE).
 - `packs/*.yaml` — built-in packs (also compiled into the binary).
 - `rebootly-core::fixtures` — synthetic `win11-basic` volume (feature `fixtures`); `examples/gen_fixtures.rs` regenerates it.
-- `rebootly-cli` — `rebootly inspect …` (`render.rs`) and `rebootly backup --windows-root <p> --target <dir> | --resume <job> [--user] [--folder] [--preflight] [--force] [--jobs N]` (`backup.rs`); `rebootly pack list | validate FILE…` (`pack.rs`).
+- `rebootly-cli` — `rebootly inspect …` (`render.rs`) and `rebootly backup --windows-root <p> | --live --target <dir> | --resume <job> [--user] [--folder] [--preflight] [--force] [--jobs N] [--sensitive] [--cloud-files skip|hydrate] [--keep-zone-identifier]` (`backup.rs`); `rebootly pack list | validate FILE…` (`pack.rs`).
 - `rebootly-core::source::access` — `VolumeAccess` strategy (`OfflineAccess`), `HiveRef`, `LoadedHive`.
 - `rebootly-core::backup::system` — Tier 4 file items and live captures into the plan.
 - `rebootly-core::backup::sensitive` — `sensitive.age` write/list/extract, `Passphrase`.
-- `rebootly-win::live` (cfg(windows)) — `LiveWindows` (`mod.rs`), `access` (backup-semantics reads, snapshots), `regsave` (RegSaveKeyExW), `token` (elevation, privileges, SID), `capture` (winget, Get-Printer, netsh with timeout), `knownfolder`, `power` (SleepGuard, on_battery), `wide`.
+- `rebootly-core::backup::filecopy` — one file: main stream with the locked-file snapshot fallback, then alternate data streams.
+- `rebootly-win::live` (cfg(windows)) — `LiveWindows` (`mod.rs`), `access` (backup-semantics reads, snapshots), `regsave` (RegSaveKeyExW), `token` (elevation, privileges, SID), `capture/` (`inventory`: winget, Get-Printer, powercfg, dism, pnputil; `secrets`: netsh Wi-Fi, certificates), `cmd` (timeouts, PowerShell -EncodedCommand), `vss` (shadow copies), `streams` (ADS), `volume` (volume root, filesystem type), `knownfolder`, `power` (SleepGuard, on_battery), `wide`.
+- `rebootly-win::parse` — platform-neutral parsing for the live code (stream info buffers, GUIDs, VSS answers, base64), tested on Linux.
 - `rebootly-cli` also: `source.rs` (`--live` / `--windows-root`, keep-awake), `sensitive.rs` (passphrase input, `rebootly sensitive list|extract`).
 - `rebootly-linux`, `rebootly-tui` — placeholders for M7, M6.

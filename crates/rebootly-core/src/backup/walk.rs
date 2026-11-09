@@ -11,7 +11,7 @@ use std::time::SystemTime;
 
 use serde::Serialize;
 
-use super::exclude::{Category, ExcludeOptions, classify};
+use super::exclude::{Category, CloudFiles, ExcludeOptions, classify};
 use crate::packs::glob::Glob;
 
 /// One folder to back up.
@@ -96,6 +96,8 @@ pub struct WalkResult {
     /// category -> (count, bytes)
     pub excluded: BTreeMap<Category, (u64, u64)>,
     pub issues: Vec<PathIssue>,
+    /// Online-only files planned for download (`CloudFiles::Hydrate`): (count, bytes).
+    pub to_download: (u64, u64),
 }
 
 fn invalid_on_windows(name: &str) -> bool {
@@ -267,10 +269,16 @@ pub fn walk(job: &FolderJob, skip_roots: &SkipSet, opts: ExcludeOptions) -> Walk
                     .as_ref()
                     .filter(|m| attributes(m).is_some_and(is_cloud_placeholder))
                 {
-                    let slot = out.excluded.entry(Category::CloudPlaceholder).or_default();
+                    let slot = if opts.cloud_files == CloudFiles::Hydrate {
+                        &mut out.to_download
+                    } else {
+                        out.excluded.entry(Category::CloudPlaceholder).or_default()
+                    };
                     slot.0 += 1;
                     slot.1 += m.len();
-                    continue;
+                    if opts.cloud_files == CloudFiles::Skip {
+                        continue;
+                    }
                 }
                 out.files.push(PlannedFile {
                     src_win: format!(

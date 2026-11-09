@@ -112,6 +112,38 @@ pub trait Source: Send + Sync {
     fn system_captures(&self, _sensitive: bool) -> Captures {
         Captures::default()
     }
+    /// Open a point-in-time copy of `path` (VSS in live mode), for a file
+    /// another program holds locked. Default: unsupported.
+    fn open_snapshot(&self, _path: &Path) -> std::io::Result<File> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            LOCKED_HINT,
+        ))
+    }
+    /// Named alternate data streams of `path` (never the main stream), read
+    /// from the snapshot when `snapshot`. Default: none (offline mounts
+    /// don't expose them).
+    fn alt_streams(&self, _path: &Path, _snapshot: bool) -> std::io::Result<Vec<StreamInfo>> {
+        Ok(Vec::new())
+    }
+    /// Open alternate data stream `name` of `path`.
+    fn open_stream(&self, _path: &Path, _name: &str, _snapshot: bool) -> std::io::Result<File> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "alternate data streams can't be read here",
+        ))
+    }
+}
+
+/// Why a locked file couldn't be read, in plain language.
+pub const LOCKED_HINT: &str =
+    "the file is open in another program; close it and run the backup again with --resume";
+
+/// An alternate data stream (`file.txt:name`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamInfo {
+    pub name: String,
+    pub size: u64,
 }
 
 /// A file produced by a live command, to back up like a source file.

@@ -12,6 +12,9 @@ fn with_packs() -> PlanOptions {
 #[test]
 fn packs_detect_copy_list_and_export_registry() {
     let (t, root) = volume();
+    let pbk = root.join("Users/alice/AppData/Roaming/Microsoft/Network/Connections/Pbk");
+    std::fs::create_dir_all(&pbk).unwrap();
+    std::fs::write(pbk.join("rasphone.pbk"), b"[Home VPN]\r\n").unwrap();
     let src = OfflineVolume::open(&root).unwrap();
     let opts = PlanOptions {
         users: vec!["Alice".into(), "bob".into()],
@@ -26,6 +29,21 @@ fn packs_detect_copy_list_and_export_registry() {
             .collect()
     };
     let alice = ids("Alice");
+    let vpn: Vec<_> = p
+        .files
+        .iter()
+        .filter(|f| f.dest.ends_with("rasphone.pbk"))
+        .map(|f| f.dest.as_str())
+        .collect();
+    assert_eq!(
+        vpn.len(),
+        1,
+        "per-user VPN phonebook via windows-shell: {vpn:?}"
+    );
+    assert!(
+        vpn[0].starts_with("users/Alice/packs/windows-shell/"),
+        "{vpn:?}"
+    );
     for id in ["chrome", "dev-dotfiles", "vscode", "windows-shell"] {
         assert!(
             alice.contains(&id.to_owned()),

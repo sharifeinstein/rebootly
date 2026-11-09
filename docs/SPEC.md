@@ -78,14 +78,14 @@ Scan every mounted volume for `\Windows\System32\config\SOFTWARE`. **Never assum
 
 ### 3.5 Copy engine
 - **Never follow reparse points.** Junctions such as `Application Data`, `My Documents` and `Local Settings` cause infinite loops. Symlinks and junctions are recorded in the manifest, not traversed.
-- OneDrive Files On-Demand placeholders (`RECALL_ON_DATA_ACCESS`/`OFFLINE` attributes, cloud reparse tag): user policy is skip, hydrate (live only), or skip the whole folder.
-- Live mode: `SeBackupPrivilege` plus `FILE_FLAG_BACKUP_SEMANTICS`, to read other users' profiles past their ACLs (admin required). Locked files are read from a **VSS snapshot** when elevated; otherwise prompt "close app X".
-- Long paths (`\\?\`), timestamps and attributes preserved. ACLs optional (off by default). Alternate data streams: drop `Zone.Identifier` by default (configurable); record others.
+- OneDrive Files On-Demand placeholders (`RECALL_ON_DATA_ACCESS`/`OFFLINE` attributes, cloud reparse tag): user policy is skip, hydrate (live only), or skip the whole folder. Implemented (M4): `--cloud-files skip` (default; excluded category + Manual step) and `--cloud-files hydrate` (live only; pre-flight warns how much will be downloaded onto the source disk). Skip-whole-folder is not implemented.
+- Live mode: `SeBackupPrivilege` plus `FILE_FLAG_BACKUP_SEMANTICS`, to read other users' profiles past their ACLs (admin required). Locked files are read from a **VSS snapshot** when elevated; otherwise prompt "close app X". Implemented (M4): a sharing or lock violation switches that file to a shadow copy at once (no backoff); the shadow is made lazily, once per volume, through WMI `Win32_ShadowCopy.Create` (ClientAccessible) run by PowerShell, and deleted when the job ends. IDs are kept in `%TEMP%\rebootly-vss-<pid>.txt` so the next live run deletes shadows left by a killed run. If no shadow can be made, the file fails at once with "close the program and run --resume". The manifest marks such files `snapshot: true`.
+- Long paths (`\\?\`), timestamps and attributes preserved. ACLs optional (off by default). Alternate data streams: drop `Zone.Identifier` by default (configurable); record others. Implemented (M4, live only): other streams are listed from a backup-semantics handle and stored as separate files `streams/<dest>/<name>` (targets like exFAT/NAS can't hold streams), recorded per file in the manifest; `--keep-zone-identifier` keeps that one too; streams over 64 MiB are listed, not stored. Offline mounts don't expose streams.
 - **Priority order:** Desktop, Documents, Pictures → app packs/settings → Music, Videos → Downloads → custom folders. The user can reorder.
 - **Failing-disk tolerance:** retry a read N times with backoff, then log and continue. Never abort the whole job over one file. If SMART data looks bad (when readable), suggest imaging with `ddrescue` first.
 - **Resumable:** the job state file on the target lets the copy resume after a NAS dropout or cancel. Pause and resume are supported.
 - Parallel, bounded I/O. A SHA-256 hash per file goes into the manifest (computed while streaming).
-- **Pre-flight:** size per category, target free space, **FAT32 4 GB limit detection** (warn, suggest exFAT/NTFS), path-length and invalid-character checks for SMB/Linux targets, case-collision check for case-sensitive NAS.
+- **Pre-flight:** size per category, target free space, **FAT32 4 GB limit detection** (warn, suggest exFAT/NTFS), path-length and invalid-character checks for SMB/Linux targets, case-collision check for case-sensitive NAS. The target's filesystem type comes from /proc/self/mountinfo on Linux and `GetVolumeInformationW` on Windows.
 - Live mode: prevent sleep during the job (`SetThreadExecutionState`). Warn if a laptop is on battery.
 
 ### 3.6 Exclusions (always)
@@ -122,12 +122,13 @@ Desktop, Documents, Downloads (optional), Pictures, Music, Videos, Favorites, Li
 | Default apps | `dism /online /Export-DefaultAppAssociations` | — | Report only (Win11 blocks silent set) |
 | Hosts file | copy | copy | diff and merge |
 | User certs | `certutil -user -exportPFX` if exportable | — | import |
-| VPN | `%APPDATA%\Microsoft\Network\Connections\Pbk\rasphone.pbk` | same | copy |
+| VPN | `%APPDATA%\Microsoft\Network\Connections\Pbk\rasphone.pbk` (+ all-users `%ProgramData%\…\Pbk`) | same | copy |
 | Scheduled tasks (non-Microsoft) | `schtasks /query /xml` | XMLs from `Windows\System32\Tasks` | `schtasks /create /xml` |
 | Power plan | `powercfg /export` | — | `powercfg /import` |
 | Drivers | `pnputil /export-driver` (reference only) | — | never auto-install |
 
 Implemented (M4, part 1): `system/hosts`; scheduled tasks outside `Tasks\Microsoft` → `system/tasks/`; Wi-Fi profile XMLs (offline) → the sensitive bundle only (`system/wifi/`); `system/apps.json` (machine-wide Uninstall entries). Live only: `system/winget.json` (`winget export --include-versions`), `system/printers.json` (`Get-Printer`), and with `--sensitive` `netsh wlan export profile key=clear` into the bundle (`system/wifi-export/`; the clear-text XMLs exist only in a private temp folder during the job). Each command has a 180 s timeout; failures become warnings. `--no-system` leaves all of this out.
+Implemented (M4, part 2): per-user `rasphone.pbk` via the `windows-shell` pack (v2), all-users one → `system/vpn/rasphone.pbk` (both modes; it holds no passwords). Live only: `system/power/active-scheme.pow` (`powercfg /export` of the active scheme), `system/default-apps.xml` (`dism /Export-DefaultAppAssociations`), `system/drivers.txt` (`pnputil /enum-drivers`, reference only). User certificates: with `--sensitive`, `Cert:\CurrentUser\My` of the user running the tool is exported with `Export-PfxCertificate` (instead of certutil, which exports one certificate per call and takes the password on its command line) into the bundle as `system/certs/<thumbprint>.pfx` (`.cer` when there's no key or it isn't exportable, plus a warning), protected by a random password stored next to them as `system/certs/PFX-PASSWORD.txt` inside the bundle. Other users' certificates need their own sign-in.
 
 ### Tier 5 — cannot migrate → "Manual steps" checklist
 Browser/app passwords (prompt for a CSV export in live mode, **import then securely delete**; or use browser sync), Credential Manager entries (`cmdkey /list` names only), software licenses/activation (list + **"deactivate on the old PC now"** prompt in live mode: Adobe, iTunes, Office, etc.), Store app data (except known packs), Windows Hello/TPM, BitLocker (remind to save the recovery key), offline Wi-Fi keys.
@@ -235,7 +236,7 @@ USB (Ventoy)
 
 ## 10. Manifest (`manifest.json`, schema-versioned)
 
-Tool version, schema version, job ID, timestamps, `complete` flag; source machine name, OS edition/build, environment (live/winpe/linux); per user: SID, name, account type, profile path, KNOWNFOLDERID→path map; pack IDs and versions used; per file: relative path, size, mtime, attributes, SHA-256, status (ok/skipped/failed + reason); recorded reparse points; excluded categories; encryption info (no secrets); the Manual-steps list. Also (M2): per-user `hive_dirty`, pre-flight path `issues`, and `warnings`. Also (M4): `sensitive` (bundle file, format, and per file only path, source and size; hashes stay inside the encrypted bundle). Folders not copied stay in the KNOWNFOLDERID map with `included: false` and a note. `job.state` is JSON lines (header + one `FileEntry` per file, same shape as the manifest's); a file is skipped on resume when its size and mtime are unchanged and the copy on the target has the right size. Raw hives go to `system/hives/<user>/`.
+Tool version, schema version, job ID, timestamps, `complete` flag; source machine name, OS edition/build, environment (live/winpe/linux); per user: SID, name, account type, profile path, KNOWNFOLDERID→path map; pack IDs and versions used; per file: relative path, size, mtime, attributes, SHA-256, status (ok/skipped/failed + reason); recorded reparse points; excluded categories; encryption info (no secrets); the Manual-steps list. Also (M2): per-user `hive_dirty`, pre-flight path `issues`, and `warnings`. Also (M4): `sensitive` (bundle file, format, and per file only path, source and size; hashes stay inside the encrypted bundle); per file `snapshot` (read from VSS) and `streams` (name, size, stored path, SHA-256, status). Folders not copied stay in the KNOWNFOLDERID map with `included: false` and a note. `job.state` is JSON lines (header + one `FileEntry` per file, same shape as the manifest's); a file is skipped on resume when its size and mtime are unchanged and the copy on the target has the right size. Raw hives go to `system/hives/<user>/`.
 
 ### Backup folder layout
 ```
@@ -249,6 +250,7 @@ Tool version, schema version, job ID, timestamps, `complete` flag; source machin
 │  └─ registry/*.reg
 ├─ system/ (wifi/, printers/, tasks/, apps.json, hosts, hives/ raw)
 ├─ custom/<label>/...
+├─ streams/<dest>/<stream-name>    # alternate data streams (live)
 └─ sensitive.age                    # encrypted bundle
 ```
 

@@ -1,9 +1,12 @@
 //! Copy one file: stream, hash (SHA-256) while copying, retry with backoff,
 //! write to a temporary name and rename into place, keep the mtime.
 //!
-//! Alternate data streams are not copied (bytes are streamed, not
-//! `CopyFileEx`), which drops `Zone.Identifier` as SPEC §3.5 wants by
-//! default. Recording other streams needs Win32 APIs (M4).
+//! Only the main stream is copied here (bytes are streamed, not
+//! `CopyFileEx`); alternate data streams are handled by `filecopy`.
+//!
+//! A file that another program holds locked (sharing or lock violation) is
+//! retried once at once from a consistent snapshot (VSS in live mode), via
+//! the `open(true)` call.
 
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -46,6 +49,8 @@ pub struct Copied {
     pub sha256: String,
     pub bytes: u64,
     pub attempts: u32,
+    /// Read from the snapshot because the live file was locked.
+    pub from_snapshot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,13 +69,24 @@ fn partial_path(dest: &Path) -> PathBuf {
     PathBuf::from(s)
 }
 
+/// Opens the source; `true` = from the snapshot instead of the live file.
+pub type Opener<'a> = dyn Fn(bool) -> io::Result<File> + 'a;
+
+/// Another program has the file open without sharing, or holds a byte-range
+/// lock (Windows `ERROR_SHARING_VIOLATION` / `ERROR_LOCK_VIOLATION`).
+pub fn is_lock_error(e: &io::Error) -> bool {
+    (cfg!(windows) && matches!(e.raw_os_error(), Some(32 | 33)))
+        || e.kind() == io::ErrorKind::ResourceBusy
+}
+
 fn copy_once(
-    open: &dyn Fn() -> io::Result<File>,
+    open: &Opener<'_>,
+    snapshot: bool,
     dest: &Path,
     mtime: Option<SystemTime>,
     cancel: &AtomicBool,
 ) -> io::Result<(String, u64)> {
-    let mut src = open()?;
+    let mut src = open(snapshot)?;
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -104,7 +120,7 @@ fn copy_once(
 
 /// Copy with retries. Never panics; the caller logs a failure and moves on.
 pub fn copy_file(
-    open: &dyn Fn() -> io::Result<File>,
+    open: &Opener<'_>,
     dest: &Path,
     mtime: Option<SystemTime>,
     policy: RetryPolicy,
@@ -112,16 +128,20 @@ pub fn copy_file(
 ) -> Result<Copied, CopyFailed> {
     let attempts = policy.attempts.max(1);
     let mut last = String::new();
-    for attempt in 0..attempts {
-        if attempt > 0 {
+    let mut snapshot = false;
+    let mut attempt = 0;
+    let mut wait = false;
+    while attempt < attempts {
+        if wait {
             std::thread::sleep(policy.delay(attempt - 1));
         }
-        match copy_once(open, dest, mtime, cancel) {
+        match copy_once(open, snapshot, dest, mtime, cancel) {
             Ok((sha256, bytes)) => {
                 return Ok(Copied {
                     sha256,
                     bytes,
                     attempts: attempt + 1,
+                    from_snapshot: snapshot,
                 });
             }
             Err(e) if e.kind() == io::ErrorKind::Interrupted => {
@@ -131,8 +151,26 @@ pub fn copy_file(
                     attempts: attempt + 1,
                 });
             }
+            // Locked: switch to the snapshot straight away (no backoff,
+            // doesn't use up an attempt).
+            Err(e) if !snapshot && is_lock_error(&e) => {
+                snapshot = true;
+                wait = false;
+                last = e.to_string();
+                continue;
+            }
+            // No snapshot possible (offline, or VSS failed): retrying won't help.
+            Err(e) if snapshot && e.kind() == io::ErrorKind::Unsupported => {
+                let _ = std::fs::remove_file(partial_path(dest));
+                return Err(CopyFailed {
+                    reason: e.to_string(),
+                    attempts: attempt + 1,
+                });
+            }
             Err(e) => last = e.to_string(),
         }
+        attempt += 1;
+        wait = true;
     }
     let _ = std::fs::remove_file(partial_path(dest));
     Err(CopyFailed {
@@ -174,7 +212,7 @@ mod tests {
         std::fs::write(&src, b"abc").unwrap();
         let when = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
         let dest = t.path().join("out/deep/src.bin");
-        let open = || File::open(&src);
+        let open = |_| File::open(&src);
         let ok = copy_file(&open, &dest, Some(when), NO_WAIT, &AtomicBool::new(false)).unwrap();
         // SHA-256("abc")
         assert_eq!(
@@ -193,7 +231,7 @@ mod tests {
         let src = t.path().join("s");
         std::fs::write(&src, b"data").unwrap();
         let fails = AtomicU32::new(2);
-        let flaky = || {
+        let flaky = |_| {
             if fails.load(Ordering::SeqCst) > 0 {
                 fails.fetch_sub(1, Ordering::SeqCst);
                 Err(io::Error::other("bad sector"))
@@ -210,7 +248,7 @@ mod tests {
         );
         assert_eq!(ok.unwrap().attempts, 3);
 
-        let never = || -> io::Result<File> { Err(io::Error::other("bad sector")) };
+        let never = |_| -> io::Result<File> { Err(io::Error::other("bad sector")) };
         let err = copy_file(
             &never,
             &t.path().join("d2"),
@@ -235,9 +273,52 @@ mod tests {
         let src = t.path().join("s");
         std::fs::write(&src, b"data").unwrap();
         let dest = t.path().join("d");
-        let open = || File::open(&src);
+        let open = |_| File::open(&src);
         let err = copy_file(&open, &dest, None, NO_WAIT, &AtomicBool::new(true)).unwrap_err();
         assert_eq!(err.reason, "cancelled");
         assert!(!dest.exists() && !partial_path(&dest).exists());
+    }
+
+    #[test]
+    fn locked_file_is_read_from_the_snapshot() {
+        let t = tempfile::tempdir().unwrap();
+        let snap = t.path().join("snap");
+        std::fs::write(&snap, b"abc").unwrap();
+        let busy = || io::Error::from(io::ErrorKind::ResourceBusy);
+        let open = |s: bool| if s { File::open(&snap) } else { Err(busy()) };
+        let ok = copy_file(
+            &open,
+            &t.path().join("d"),
+            None,
+            NO_WAIT,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert!(ok.from_snapshot);
+        assert_eq!(ok.attempts, 1);
+
+        // No snapshot available: one clear failure, no pointless retries.
+        let none = |s: bool| -> io::Result<File> {
+            if s {
+                Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "close the program",
+                ))
+            } else {
+                Err(busy())
+            }
+        };
+        let err = copy_file(
+            &none,
+            &t.path().join("e"),
+            None,
+            NO_WAIT,
+            &AtomicBool::new(false),
+        )
+        .unwrap_err();
+        assert_eq!(
+            (err.reason.as_str(), err.attempts),
+            ("close the program", 1)
+        );
     }
 }

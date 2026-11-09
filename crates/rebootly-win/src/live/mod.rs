@@ -2,15 +2,20 @@
 //!
 //! Same resolution logic as offline (`OfflineVolume` with a live
 //! [`access::LiveAccess`]), plus the `SHGetKnownFolderPath` cross-check for
-//! the user the tool runs as. Requires an elevated process: SeBackupPrivilege
+//! the user the tool runs as, VSS for locked files and alternate data
+//! streams. Requires an elevated process: SeBackupPrivilege
 //! is needed both for `RegSaveKeyExW` and to read other users' profiles.
 
 mod access;
 mod capture;
+mod cmd;
 mod knownfolder;
 mod power;
 mod regsave;
+mod streams;
 mod token;
+mod volume;
+mod vss;
 mod wide;
 
 use std::fs::File;
@@ -24,9 +29,10 @@ use rebootly_core::install::OsInfo;
 use rebootly_core::profiles::{ProfileDirs, SkippedProfile};
 use rebootly_core::source::{Profile, ResolvedFolder};
 use rebootly_core::winpath::Mapped;
-use rebootly_core::{Captures, Hive, HiveRef, OfflineVolume, Source, SourceError};
+use rebootly_core::{Captures, Hive, HiveRef, OfflineVolume, Source, SourceError, StreamInfo};
 
 pub use power::{SleepGuard, on_battery};
+pub use volume::filesystem_type;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LiveError {
@@ -47,6 +53,7 @@ pub struct LiveWindows {
     /// SID the process runs as: the only user `SHGetKnownFolderPath` can answer for.
     me: Option<String>,
     captures: capture::Capturer,
+    vss: vss::Vss,
 }
 
 impl LiveWindows {
@@ -62,6 +69,7 @@ impl LiveWindows {
             inner,
             me: token::current_user_sid().ok(),
             captures: capture::Capturer::new(),
+            vss: vss::Vss::new(),
         })
     }
 }
@@ -126,6 +134,23 @@ impl Source for LiveWindows {
     }
     fn system_captures(&self, sensitive: bool) -> Captures {
         self.captures.run(sensitive)
+    }
+    fn open_snapshot(&self, path: &Path) -> std::io::Result<File> {
+        access::open_backup(&self.vss.path_in_snapshot(path)?)
+    }
+    fn alt_streams(&self, path: &Path, snapshot: bool) -> std::io::Result<Vec<StreamInfo>> {
+        if snapshot {
+            streams::list(&self.vss.path_in_snapshot(path)?)
+        } else {
+            streams::list(path)
+        }
+    }
+    fn open_stream(&self, path: &Path, name: &str, snapshot: bool) -> std::io::Result<File> {
+        if snapshot {
+            streams::open(&self.vss.path_in_snapshot(path)?, name)
+        } else {
+            streams::open(path, name)
+        }
     }
 }
 

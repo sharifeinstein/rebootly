@@ -5,6 +5,8 @@
 //! - `hosts` → `system/hosts`
 //! - scheduled tasks outside `Tasks\Microsoft` → `system/tasks/…`
 //! - Wi-Fi profile XMLs → the encrypted bundle (`system/wifi/…`), never plain
+//! - all-users VPN phonebook → `system/vpn/rasphone.pbk` (per-user ones come
+//!   with the `windows-shell` pack)
 //! - machine-wide installed apps → generated `system/apps.json`
 
 use serde::Serialize;
@@ -91,10 +93,12 @@ pub fn plan_system(
         .program_data
         .clone()
         .unwrap_or_else(|| format!("{}:\\ProgramData", src.os_info().system_drive()));
-    let wifi = format!(
-        r"{}\Microsoft\Wlansvc\Profiles\Interfaces",
-        pd.trim_end_matches('\\')
-    );
+    let pd = pd.trim_end_matches('\\');
+    let pbk = format!(r"{pd}\Microsoft\Network\Connections\Pbk\rasphone.pbk");
+    if let Some(p) = local_dir(src, &pbk) {
+        jobs.push(job(pbk, p, "system/vpn/rasphone.pbk", None));
+    }
+    let wifi = format!(r"{pd}\Microsoft\Wlansvc\Profiles\Interfaces");
     if let Some(p) = local_dir(src, &wifi) {
         plan.sensitive_jobs.push(job(wifi, p, "system/wifi", None));
         let detail = if opts.sensitive_bundle {

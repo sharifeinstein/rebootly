@@ -35,6 +35,27 @@ pub struct FileEntry {
     pub status: FileStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Read from a VSS snapshot because the file was open in another program.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub snapshot: bool,
+    /// Alternate data streams kept beside the file (not `Zone.Identifier`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub streams: Vec<StreamEntry>,
+}
+
+/// One alternate data stream of a backed-up file, stored as a separate file
+/// under `streams/` (targets like exFAT or a NAS can't hold streams).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamEntry {
+    pub name: String,
+    pub size: u64,
+    /// Path inside the backup folder, when stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub sha256: Option<String>,
+    pub status: FileStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

@@ -11,6 +11,7 @@ rebootly-core.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+getrandom = "0.4"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",

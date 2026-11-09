@@ -5,9 +5,15 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use rebootly_core::backup::exclude::ExcludeOptions;
+use rebootly_core::backup::exclude::{CloudFiles, ExcludeOptions};
 use rebootly_core::backup::preflight::{Preflight, gib};
 use rebootly_core::backup::{self, Event, Job, PlanOptions, RunOptions};
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum CloudArg {
+    Skip,
+    Hydrate,
+}
 
 #[derive(clap::Args)]
 pub struct BackupArgs {
@@ -71,6 +77,13 @@ pub struct BackupArgs {
     /// Leave out system items (hosts, scheduled tasks, Wi-Fi, apps.json).
     #[arg(long)]
     pub no_system: bool,
+    /// Online-only OneDrive files: `skip` them (they stay in the cloud), or
+    /// `hydrate`: download and back them up (live only; fills this PC's disk).
+    #[arg(long, value_enum, default_value = "skip")]
+    pub cloud_files: CloudArg,
+    /// Keep the "downloaded from the internet" mark (Zone.Identifier stream).
+    #[arg(long)]
+    pub keep_zone_identifier: bool,
     /// Show the pre-flight check and stop.
     #[arg(long)]
     pub preflight: bool,
@@ -114,6 +127,11 @@ fn print_preflight(p: &Preflight) {
 
 /// Returns the process exit code: 0 all copied, 2 finished with failures.
 pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
+    if matches!(a.cloud_files, CloudArg::Hydrate) && !a.live {
+        bail!(
+            "--cloud-files hydrate works only with --live (offline, the files can't be downloaded)"
+        );
+    }
     let src = crate::source::open(a.live, a.windows_root.as_ref())?;
     let src = src.as_ref();
     let packs = if a.no_packs {
@@ -126,6 +144,10 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         folders: a.folders,
         exclude: ExcludeOptions {
             dev_artifacts: a.skip_dev_artifacts,
+            cloud_files: match a.cloud_files {
+                CloudArg::Skip => CloudFiles::Skip,
+                CloudArg::Hydrate => CloudFiles::Hydrate,
+            },
         },
         packs,
         public: a.public,
@@ -151,7 +173,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
     } else {
         nearest_existing(target)
     };
-    let pre = backup::preflight(&plan, &probe, resumed.as_ref());
+    let pre = backup::preflight(&plan, &probe, resumed.as_ref(), target_fs(&probe));
     print_preflight(&pre);
     if a.preflight {
         return Ok(0);
@@ -181,6 +203,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
     let ro = RunOptions {
         jobs: a.jobs,
         passphrase,
+        keep_zone_identifier: a.keep_zone_identifier,
         ..RunOptions::default()
     };
     let (mut done, mut total, mut failed, mut last) = (0usize, 0usize, 0usize, Instant::now());
@@ -281,4 +304,18 @@ fn nearest_existing(p: &Path) -> PathBuf {
     p.ancestors()
         .find(|a| a.exists())
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+}
+
+/// Target filesystem type from the platform layer (Windows); `None` lets
+/// the core look it up (Linux).
+fn target_fs(path: &Path) -> Option<String> {
+    #[cfg(windows)]
+    {
+        rebootly_win::filesystem_type(path)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        None
+    }
 }

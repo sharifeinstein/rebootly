@@ -3,13 +3,15 @@
 //! All Win32 code lives behind `cfg(windows)` so the workspace still builds
 //! and tests on Linux. `unsafe` is allowed only in the small FFI modules.
 //!
-//! Done (M4): SeBackupPrivilege, live hive snapshots (`RegSaveKeyExW`),
-//! backup-semantics reads, `SHGetKnownFolderPath` cross-check, sleep
-//! prevention and battery check. Later in M4: VSS, OneDrive placeholder
-//! policy, winget/netsh/printers/tasks capture.
+//! M4: SeBackupPrivilege, live hive snapshots (`RegSaveKeyExW`),
+//! backup-semantics reads, VSS for locked files, alternate data streams,
+//! `SHGetKnownFolderPath` cross-check, Tier 4 command captures, sleep
+//! prevention, battery check, target filesystem type.
 
 #[cfg(windows)]
 mod live;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod parse;
 
 #[cfg(windows)]
-pub use live::{LiveError, LiveWindows, SleepGuard, on_battery};
+pub use live::{LiveError, LiveWindows, SleepGuard, filesystem_type, on_battery};

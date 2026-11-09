@@ -94,7 +94,7 @@ fn full_backup_layout_manifest_and_report() {
     let p = plan(&src, &PlanOptions::default()).unwrap();
     assert_eq!(p.files[0].priority, plan::HIVES_PRIORITY, "hives first");
     let target = t.path().join("usb");
-    let pre = preflight(&p, &t.path().join("."), None);
+    let pre = preflight(&p, &t.path().join("."), None, None);
     assert!(pre.blockers.is_empty(), "{:?}", pre.blockers);
 
     let job = Job::create(&target, p.source.machine.as_deref()).unwrap();
@@ -280,6 +280,7 @@ fn folder_filter_limits_plan() {
     );
 }
 
+mod live_like;
 mod packs;
 mod sensitive;
 mod snapshot;

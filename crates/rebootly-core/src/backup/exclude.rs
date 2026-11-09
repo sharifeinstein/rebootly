@@ -63,6 +63,18 @@ impl Category {
 pub struct ExcludeOptions {
     /// Also skip `node_modules` and `.git/objects`.
     pub dev_artifacts: bool,
+    /// What to do with online-only OneDrive files.
+    pub cloud_files: CloudFiles,
+}
+
+/// Policy for online-only cloud files (SPEC §3.5).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CloudFiles {
+    /// Leave them out (they stay in the cloud); a Manual step says so.
+    #[default]
+    Skip,
+    /// Back them up, downloading each while copying (live mode only).
+    Hydrate,
 }
 
 fn eq(a: &str, b: &str) -> bool {
@@ -260,6 +272,7 @@ mod tests {
         );
         let on = ExcludeOptions {
             dev_artifacts: true,
+            ..ExcludeOptions::default()
         };
         assert_eq!(
             classify(&comps, true, true, on),

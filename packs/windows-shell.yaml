@@ -1,7 +1,7 @@
 schema: 1
 id: windows-shell
 name: Windows shell and personalization
-version: 1
+version: 2
 detect:
   any:
     - always: true
@@ -12,6 +12,8 @@ paths:
     include: ["f01b4d95cf55d32a.automaticDestinations-ms"]   # Quick Access
   - src: "%APPDATA%\\Microsoft\\Windows\\Themes"
   - src: "%APPDATA%\\Microsoft\\Windows\\SendTo"
+  # VPN and dial-up connections (settings only; passwords are not in it).
+  - src: "%APPDATA%\\Microsoft\\Network\\Connections\\Pbk\\rasphone.pbk"
 # Tier 3 HKCU allowlist (SPEC 4). Never the whole hive.
 registry:
   - "HKCU\\Control Panel"
@@ -22,4 +24,4 @@ registry:
   - "HKCU\\Keyboard Layout"
   - "HKCU\\Network"
   - "HKCU\\Environment"
-notes: "Environment variables and mapped drives are reviewed before they are applied on restore."
+notes: "Environment variables and mapped drives are reviewed before they are applied on restore. VPN connections (rasphone.pbk) come back without their saved passwords."

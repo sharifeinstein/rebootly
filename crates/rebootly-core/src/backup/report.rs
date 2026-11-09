@@ -42,8 +42,36 @@ pub fn text(m: &Manifest) -> String {
         gib(bytes)
     );
 
+    let snap = m.files.iter().filter(|f| f.snapshot).count();
+    if snap > 0 {
+        let _ = writeln!(
+            s,
+            "          {snap} file(s) were open in another program and were read from a \
+             shadow copy (their state when the copy was made)"
+        );
+    }
+    let (streams, stream_fail) = m
+        .files
+        .iter()
+        .flat_map(|f| &f.streams)
+        .fold((0, 0), |a, st| {
+            (
+                a.0 + usize::from(st.status == FileStatus::Ok),
+                a.1 + usize::from(st.status != FileStatus::Ok),
+            )
+        });
+    if streams + stream_fail > 0 {
+        let _ = writeln!(
+            s,
+            "          {streams} alternate data stream(s) kept under streams/, {stream_fail} not stored"
+        );
+    }
+
     let mut per_folder: BTreeMap<String, (u64, u64)> = BTreeMap::new();
     for f in m.files.iter().filter(|f| f.status == FileStatus::Ok) {
+        if f.path.starts_with("streams/") {
+            continue;
+        }
         let key: Vec<&str> = f.path.split('/').take(4).collect();
         let key = if key.first() == Some(&"users") {
             key.join("/")

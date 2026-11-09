@@ -16,6 +16,9 @@ fn add_system_files(root: &Path) {
     std::fs::create_dir_all(s32.join("Tasks/Vendor")).unwrap();
     std::fs::write(s32.join("Tasks/Vendor/Updater"), b"<Task/>").unwrap();
     std::fs::write(s32.join("Tasks/NightlyBackup"), b"<Task/>").unwrap();
+    let pbk = root.join("ProgramData/Microsoft/Network/Connections/Pbk");
+    std::fs::create_dir_all(&pbk).unwrap();
+    std::fs::write(pbk.join("rasphone.pbk"), b"[Office VPN]\r\n").unwrap();
     let wifi = root.join("ProgramData/Microsoft/Wlansvc/Profiles/Interfaces/{1234}");
     std::fs::create_dir_all(&wifi).unwrap();
     std::fs::write(wifi.join("{abcd}.xml"), b"<WLANProfile/>").unwrap();
@@ -38,7 +41,8 @@ fn system_items_planned_and_wifi_only_encrypted() {
         [
             "system/hosts",
             "system/tasks/NightlyBackup",
-            "system/tasks/Vendor/Updater"
+            "system/tasks/Vendor/Updater",
+            "system/vpn/rasphone.pbk"
         ]
     );
     assert!(

@@ -5,10 +5,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::custom::plan_custom;
-use super::exclude::{Category, ExcludeOptions};
+use super::exclude::{Category, CloudFiles, ExcludeOptions};
 use super::extras::{GeneratedFile, plan_user_packs};
 use super::manifest::{CustomRecord, FolderRecord, ManualStep, PackRecord, SourceInfo, UserRecord};
 use super::walk::{FolderJob, PathIssue, PlannedFile, ReparsePoint, SkipSet, rel_components, walk};
+use crate::env::Environment;
 use crate::hive::dirty;
 use crate::packs::schema::CompiledPack;
 use crate::source::{HiveRef, Profile, Source, SourceError};
@@ -68,6 +69,8 @@ pub struct Plan {
     pub files: Vec<PlannedFile>,
     pub reparse_points: Vec<ReparsePoint>,
     pub excluded: BTreeMap<Category, (u64, u64)>,
+    /// Online-only cloud files that copying will download: (count, bytes).
+    pub to_download: (u64, u64),
     pub issues: Vec<PathIssue>,
     pub manual_steps: Vec<ManualStep>,
     pub warnings: Vec<String>,
@@ -247,8 +250,18 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
         .chain(&plan.sensitive_jobs)
         .map(|j| j.src_root.clone())
         .collect();
+    let mut exclude = opts.exclude;
+    if exclude.cloud_files == CloudFiles::Hydrate && src.environment() != Environment::LiveWindows {
+        exclude.cloud_files = CloudFiles::Skip;
+        plan.warnings.push(
+            "downloading online-only OneDrive files works only in live mode; they are skipped"
+                .into(),
+        );
+    }
     for job in &jobs {
-        let w = walk(job, &skip, opts.exclude);
+        let w = walk(job, &skip, exclude);
+        plan.to_download.0 += w.to_download.0;
+        plan.to_download.1 += w.to_download.1;
         plan.files.extend(w.files);
         plan.reparse_points.extend(w.reparse_points);
         plan.issues.extend(w.issues);
@@ -272,7 +285,7 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
     }
     if opts.sensitive_bundle {
         for job in &plan.sensitive_jobs {
-            let w = walk(job, &skip, opts.exclude);
+            let w = walk(job, &skip, exclude);
             plan.sensitive.extend(w.files);
             plan.issues.extend(w.issues);
         }

@@ -32,7 +32,8 @@ pub struct Preflight {
 }
 
 /// Filesystem type of the mount holding `path` (Linux: /proc/self/mountinfo).
-/// Elsewhere returns `None`; rebootly-win supplies it in M4.
+/// Elsewhere returns `None`; on Windows the caller passes rebootly-win's
+/// answer to [`check`].
 pub fn filesystem_type(path: &Path) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
@@ -91,6 +92,7 @@ pub fn check(
     labels: &BTreeMap<u32, String>,
     issues: &[PathIssue],
     target: &Path,
+    target_fs: Option<String>,
     source_root: &Path,
 ) -> Preflight {
     let mut by_folder: BTreeMap<u32, (u64, u64)> = BTreeMap::new();
@@ -109,7 +111,7 @@ pub fn check(
         .collect();
     let total_bytes: u64 = files.iter().map(|f| f.size).sum();
     let target_free = fs4::available_space(target).ok();
-    let target_fs = filesystem_type(target);
+    let target_fs = target_fs.or_else(|| filesystem_type(target));
     let mut warnings = Vec::new();
     let mut blockers = Vec::new();
 
@@ -205,13 +207,13 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let labels = BTreeMap::from([(10, "Desktop".to_owned())]);
         let files = [pf(10), pf(FAT32_MAX + 1)];
-        let p = check(&files, 10, &labels, &[], t.path(), src.path());
+        let p = check(&files, 10, &labels, &[], t.path(), None, src.path());
         assert_eq!(p.folders[0].folder, "Desktop");
         assert_eq!(p.total_files, 2);
         assert_eq!(p.resumed_bytes, FAT32_MAX + 1);
         assert!(p.blockers.is_empty(), "{:?}", p.blockers);
         assert!(p.target_free.is_some());
-        let huge = check(&files, u64::MAX, &labels, &[], t.path(), src.path());
+        let huge = check(&files, u64::MAX, &labels, &[], t.path(), None, src.path());
         assert!(huge.blockers.iter().any(|b| b.contains("free space")));
     }
 
@@ -220,7 +222,7 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let inside = src.path().join("backup");
         std::fs::create_dir(&inside).unwrap();
-        let p = check(&[], 0, &BTreeMap::new(), &[], &inside, src.path());
+        let p = check(&[], 0, &BTreeMap::new(), &[], &inside, None, src.path());
         assert!(
             p.blockers
                 .iter()

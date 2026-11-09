@@ -123,6 +123,8 @@ mod tests {
             sha256: Some("ab".into()),
             status,
             reason: None,
+            snapshot: false,
+            streams: Vec::new(),
         }
     }
 

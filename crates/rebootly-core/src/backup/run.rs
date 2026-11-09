@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::SystemTime;
 
-use super::copy::{RetryPolicy, copy_file};
+use super::copy::RetryPolicy;
+use super::filecopy::{FileCopyOptions, copy_one};
 use super::manifest::{ExcludedRecord, FileEntry, FileStatus, Manifest, SCHEMA_VERSION};
 use super::plan::Plan;
 use super::sensitive::{BUNDLE_FILE, Passphrase, write_bundle};
@@ -26,6 +27,8 @@ pub struct RunOptions {
     pub passphrase: Option<Passphrase>,
     /// Override age's calibrated scrypt cost (tests only).
     pub bundle_work_factor: Option<u8>,
+    /// Keep the `Zone.Identifier` stream ("downloaded from the internet").
+    pub keep_zone_identifier: bool,
 }
 
 impl Default for RunOptions {
@@ -36,6 +39,7 @@ impl Default for RunOptions {
             cancel: Arc::new(AtomicBool::new(false)),
             passphrase: None,
             bundle_work_factor: None,
+            keep_zone_identifier: false,
         }
     }
 }
@@ -145,24 +149,6 @@ pub enum Event<'a> {
     },
 }
 
-fn entry(
-    f: &PlannedFile,
-    status: FileStatus,
-    sha256: Option<String>,
-    reason: Option<String>,
-) -> FileEntry {
-    FileEntry {
-        path: f.dest.clone(),
-        source: f.src_win.clone(),
-        size: f.size,
-        mtime: f.mtime.map(rfc3339),
-        attributes: f.attributes,
-        sha256,
-        status,
-        reason,
-    }
-}
-
 pub fn run(
     src: &dyn Source,
     plan: &Plan,
@@ -208,6 +194,10 @@ pub fn run(
         files.push(e);
     }
 
+    let fc = FileCopyOptions {
+        retry: opts.retry,
+        keep_zone_identifier: opts.keep_zone_identifier,
+    };
     let next = AtomicUsize::new(0);
     let cancel = &*opts.cancel;
     let (tx, rx) = mpsc::channel::<FileEntry>();
@@ -222,22 +212,9 @@ pub fn run(
                     if i >= todo.len() || cancel.load(Ordering::Relaxed) {
                         break;
                     }
-                    let f = todo[i];
-                    let open = || src.open_read(&f.src);
-                    let e =
-                        match copy_file(&open, &job.native(&f.dest), f.mtime, opts.retry, cancel) {
-                            Ok(c) => entry(f, FileStatus::Ok, Some(c.sha256), None),
-                            Err(fail) if fail.reason == "cancelled" => break,
-                            Err(fail) => entry(
-                                f,
-                                FileStatus::Failed,
-                                None,
-                                Some(format!(
-                                    "{} (after {} attempts)",
-                                    fail.reason, fail.attempts
-                                )),
-                            ),
-                        };
+                    let Some(e) = copy_one(src, todo[i], job, fc, cancel) else {
+                        break;
+                    };
                     if tx.send(e).is_err() {
                         break;
                     }
@@ -335,5 +312,7 @@ fn write_generated(job: &Job, g: &super::extras::GeneratedFile) -> std::io::Resu
         sha256: Some(super::copy::hex(&sha2::Sha256::digest(&g.bytes))),
         status: FileStatus::Ok,
         reason: None,
+        snapshot: false,
+        streams: Vec::new(),
     })
 }
