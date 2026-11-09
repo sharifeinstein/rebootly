@@ -1,0 +1,1 @@
+fixture file: Users/Public/Documents/shared.txt

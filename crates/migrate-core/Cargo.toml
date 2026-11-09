@@ -1,0 +1,27 @@
+[package]
+name = "migrate-core"
+description = "Engine for migrate: hive parser, Source trait, resolver, manifest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+migrate-core = { path = ".", features = ["fixtures"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Synthetic Windows volumes for tests and the fixture generator.
+fixtures = []
+
+[[example]]
+name = "gen_fixtures"
+required-features = ["fixtures"]

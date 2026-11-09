@@ -1,0 +1,13 @@
+[package]
+name = "migrate-win"
+description = "Live-Windows backend: VSS, KnownFolder API, privileges (M4)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+migrate-core.workspace = true
+
+[lints]
+workspace = true

@@ -30,7 +30,7 @@ Microsoft removed Windows 11's local PC-to-PC Migration (Oct 2026 Patch Tuesday,
 
 - **Language: Rust.** Reasons: static single binaries for Windows (static CRT) and Linux (musl); Microsoft's `windows` crate for Win32/COM; memory safety for a tool that touches every user file; C#/.NET is unusable in WinPE.
 - **UI:** `ratatui` TUI is the primary interface, because it works in a WinPE console, a Linux TTY and over SSH. An optional Slint GUI for live Windows comes later, on the same core.
-- **Registry hives:** a pure-Rust offline hive parser (`nt-hive` crate or our own), used in **all** modes. It is cross-platform and also covers users who aren't logged in. In live mode the Win32 API is a cross-check only.
+- **Registry hives:** a pure-Rust offline hive parser, used in **all** modes. **Our own** read-only parser (`migrate-core::hive`); `nt-hive` was rejected because it is GPL-2.0-or-later (decided M1, see PROGRESS.md). It is cross-platform and also covers users who aren't logged in. In live mode the Win32 API is a cross-check only.
 - **Serialization:** `serde` with YAML for packs and JSON for the manifest.
 - **Targets:** `x86_64-pc-windows-msvc` (+crt-static), `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-musl`.
 - **License:** TBD (MIT/Apache-2.0 suggested). Track dependency licenses with `cargo-deny`.

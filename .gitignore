@@ -1,0 +1,5 @@
+/target
+**/*.rs.bk
+# Loose copies at the repo root from project kickoff; docs/SPEC.md is canonical.
+/SPEC.md
+/KICKOFF_PROMPT.md
