@@ -10,6 +10,7 @@ use std::time::SystemTime;
 use super::copy::{RetryPolicy, copy_file};
 use super::manifest::{ExcludedRecord, FileEntry, FileStatus, Manifest, SCHEMA_VERSION};
 use super::plan::Plan;
+use super::sensitive::{BUNDLE_FILE, Passphrase, write_bundle};
 use super::state::{self, Header, Loaded, STATE_FILE, StateWriter};
 use super::time::{rfc3339, stamp};
 use super::walk::PlannedFile;
@@ -21,6 +22,10 @@ pub struct RunOptions {
     /// Parallel copy workers (bounded I/O).
     pub jobs: usize,
     pub cancel: Arc<AtomicBool>,
+    /// Required when the plan has sensitive files (`sensitive.age`).
+    pub passphrase: Option<Passphrase>,
+    /// Override age's calibrated scrypt cost (tests only).
+    pub bundle_work_factor: Option<u8>,
 }
 
 impl Default for RunOptions {
@@ -29,6 +34,8 @@ impl Default for RunOptions {
             retry: RetryPolicy::default(),
             jobs: 4,
             cancel: Arc::new(AtomicBool::new(false)),
+            passphrase: None,
+            bundle_work_factor: None,
         }
     }
 }
@@ -132,6 +139,10 @@ pub enum Event<'a> {
         already_done: usize,
     },
     File(&'a FileEntry),
+    /// Writing the encrypted bundle (after the copy).
+    Sensitive {
+        files: usize,
+    },
 }
 
 fn entry(
@@ -159,6 +170,16 @@ pub fn run(
     opts: &RunOptions,
     progress: &mut dyn FnMut(Event<'_>),
 ) -> std::io::Result<Manifest> {
+    let pass = match (&opts.passphrase, plan.sensitive.is_empty()) {
+        (Some(p), false) => Some(p),
+        (None, false) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the plan has sensitive files but no passphrase was given",
+            ));
+        }
+        (_, true) => None,
+    };
     let mut writer = if job.resumed {
         StateWriter::append_to(&job.dir)?
     } else {
@@ -243,6 +264,23 @@ pub fn run(
 
     files.sort_by(|a, b| a.path.cmp(&b.path));
     let complete = !cancel.load(Ordering::Relaxed);
+    // Rebuilt in full on every completed run (small; needs the passphrase).
+    let sensitive = match pass.filter(|_| complete) {
+        Some(p) => {
+            progress(Event::Sensitive {
+                files: plan.sensitive.len(),
+            });
+            let out = job.dir.join(BUNDLE_FILE);
+            Some(write_bundle(
+                src,
+                &plan.sensitive,
+                &out,
+                p,
+                opts.bundle_work_factor,
+            )?)
+        }
+        None => None,
+    };
     let manifest = Manifest {
         schema_version: SCHEMA_VERSION,
         tool_version: env!("CARGO_PKG_VERSION"),
@@ -269,6 +307,7 @@ pub fn run(
             .collect(),
         issues: plan.issues.clone(),
         encryption: None,
+        sensitive,
         manual_steps: plan.manual_steps.clone(),
         warnings: plan.warnings.clone(),
     };

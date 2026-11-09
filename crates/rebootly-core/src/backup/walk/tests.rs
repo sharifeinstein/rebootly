@@ -29,7 +29,7 @@ fn walks_sorted_and_excludes() {
     touch(&r.join("Cache/kept.txt")); // not under AppData: kept
     let w = walk(
         &job(r, Some(vec!["Documents".into()])),
-        &HashSet::new(),
+        &SkipSet::default(),
         ExcludeOptions::default(),
     );
     let dests: Vec<_> = w.files.iter().map(|f| f.dest.as_str()).collect();
@@ -54,7 +54,7 @@ fn appdata_context_applies_from_profile_rel() {
     let rel = Some(vec!["AppData".into(), "Local".into()]);
     let w = walk(
         &job(t.path(), rel),
-        &HashSet::new(),
+        &SkipSet::default(),
         ExcludeOptions::default(),
     );
     assert_eq!(w.files.len(), 1);
@@ -67,7 +67,7 @@ fn skips_nested_planned_roots() {
     let t = tempfile::tempdir().unwrap();
     touch(&t.path().join("Pictures/p.jpg"));
     touch(&t.path().join("d.txt"));
-    let skip: HashSet<PathBuf> = [t.path().join("Pictures")].into();
+    let skip: SkipSet = [t.path().join("pictures")].into_iter().collect(); // other casing
     let w = walk(&job(t.path(), None), &skip, ExcludeOptions::default());
     assert_eq!(w.files.len(), 1);
 }
@@ -81,7 +81,11 @@ fn records_but_never_follows_links() {
     // Junction-style loop: "My Music" -> its own parent.
     std::os::unix::fs::symlink(r, r.join("real/My Music")).unwrap();
     std::os::unix::fs::symlink(r.join("real/f.txt"), r.join("link.txt")).unwrap();
-    let w = walk(&job(r, None), &HashSet::new(), ExcludeOptions::default());
+    let w = walk(
+        &job(r, None),
+        &SkipSet::default(),
+        ExcludeOptions::default(),
+    );
     assert_eq!(w.files.len(), 1);
     assert_eq!(w.reparse_points.len(), 2);
     assert!(w.reparse_points.iter().all(|p| p.target.is_some()));
@@ -95,7 +99,11 @@ fn reports_name_issues() {
     touch(&r.join("Report.txt"));
     touch(&r.join("report.TXT"));
     touch(&r.join("bad:name"));
-    let w = walk(&job(r, None), &HashSet::new(), ExcludeOptions::default());
+    let w = walk(
+        &job(r, None),
+        &SkipSet::default(),
+        ExcludeOptions::default(),
+    );
     let kinds: Vec<_> = w.issues.iter().map(|i| i.kind).collect();
     assert!(kinds.contains(&IssueKind::CaseCollision));
     assert!(kinds.contains(&IssueKind::InvalidWindowsName));
@@ -109,7 +117,7 @@ fn reports_name_issues() {
 fn unreadable_root_is_an_issue_not_a_panic() {
     let w = walk(
         &job(Path::new("/nonexistent/rebootly"), None),
-        &HashSet::new(),
+        &SkipSet::default(),
         ExcludeOptions::default(),
     );
     assert!(w.files.is_empty());
@@ -130,7 +138,7 @@ fn pack_filters_and_single_file_roots() {
         include: vec![g("settings.json"), g("snippets/**")],
         exclude: vec![g("snippets/skip")],
     });
-    let w = walk(&j, &HashSet::new(), ExcludeOptions::default());
+    let w = walk(&j, &SkipSet::default(), ExcludeOptions::default());
     let rels: Vec<_> = w
         .files
         .iter()
@@ -140,7 +148,16 @@ fn pack_filters_and_single_file_roots() {
 
     let mut one = job(&r.join("settings.json"), None);
     one.dest_root = "users/u/packs/x/settings.json".into();
-    let w = walk(&one, &HashSet::new(), ExcludeOptions::default());
+    let w = walk(&one, &SkipSet::default(), ExcludeOptions::default());
     assert_eq!(w.files.len(), 1);
     assert_eq!(w.files[0].dest, "users/u/packs/x/settings.json");
+}
+
+#[test]
+fn cloud_placeholder_attributes() {
+    assert!(is_cloud_placeholder(0x0040_0020)); // RECALL_ON_DATA_ACCESS | ARCHIVE
+    assert!(is_cloud_placeholder(0x0000_1000)); // OFFLINE
+    assert!(is_cloud_placeholder(0x0004_0010)); // RECALL_ON_OPEN | DIRECTORY
+    assert!(!is_cloud_placeholder(0x0008_0020)); // PINNED | ARCHIVE: on the device
+    assert!(!is_cloud_placeholder(0x20));
 }

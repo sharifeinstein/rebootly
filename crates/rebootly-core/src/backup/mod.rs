@@ -12,6 +12,7 @@ pub mod plan;
 pub mod preflight;
 pub mod report;
 pub mod run;
+pub mod sensitive;
 pub mod state;
 pub mod time;
 pub mod walk;

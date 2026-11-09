@@ -57,8 +57,9 @@ mod tests {
 
     #[test]
     fn formats() {
-        let t = UNIX_EPOCH + Duration::new(1_794_249_361, 5);
-        assert_eq!(rfc3339(t), "2026-11-09T18:36:01.000000005Z");
+        // 500 ns: representable on Windows too (100 ns SystemTime ticks).
+        let t = UNIX_EPOCH + Duration::new(1_794_249_361, 500);
+        assert_eq!(rfc3339(t), "2026-11-09T18:36:01.000000500Z");
         assert_eq!(stamp(t), "20261109-183601");
         assert_eq!(rfc3339(UNIX_EPOCH), "1970-01-01T00:00:00Z");
         assert_eq!(

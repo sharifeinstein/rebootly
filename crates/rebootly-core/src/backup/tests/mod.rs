@@ -177,8 +177,9 @@ fn full_backup_layout_manifest_and_report() {
     let txt = std::fs::read_to_string(job.dir.join("report.txt")).unwrap();
     assert!(txt.contains("0 failed") && txt.contains("[ ] 1."), "{txt}");
 
-    // Source untouched: nothing new written under the volume.
-    assert!(!root.join("users").exists());
+    // Source untouched: no backup layout written under the volume (checked
+    // by a path that can't exist there, also on case-insensitive NTFS).
+    assert!(!root.join("users/Alice/folders").exists());
 }
 
 #[test]
@@ -278,4 +279,5 @@ fn folder_filter_limits_plan() {
 }
 
 mod packs;
+mod sensitive;
 mod snapshot;

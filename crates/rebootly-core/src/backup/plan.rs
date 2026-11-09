@@ -8,7 +8,7 @@ use super::custom::plan_custom;
 use super::exclude::{Category, ExcludeOptions};
 use super::extras::{GeneratedFile, plan_user_packs};
 use super::manifest::{CustomRecord, FolderRecord, ManualStep, PackRecord, SourceInfo, UserRecord};
-use super::walk::{FolderJob, PathIssue, PlannedFile, ReparsePoint, rel_components, walk};
+use super::walk::{FolderJob, PathIssue, PlannedFile, ReparsePoint, SkipSet, rel_components, walk};
 use crate::hive::dirty;
 use crate::packs::schema::CompiledPack;
 use crate::source::{HiveRef, Profile, Source, SourceError};
@@ -52,6 +52,9 @@ pub struct PlanOptions {
     pub root_folders: Vec<String>,
     /// (label, Windows path) custom folders.
     pub custom: Vec<(String, String)>,
+    /// A passphrase will be given: plan `sensitive: true` pack paths into
+    /// the encrypted bundle instead of leaving them out.
+    pub sensitive_bundle: bool,
 }
 
 #[derive(Debug, Default)]
@@ -73,6 +76,11 @@ pub struct Plan {
     pub offered_root_folders: Vec<String>,
     /// Files Rebootly generates (e.g. `.reg` exports).
     pub generated: Vec<GeneratedFile>,
+    /// Sensitive pack paths: never walked by a parent folder; walked into
+    /// `sensitive` only when `PlanOptions::sensitive_bundle` is set.
+    pub sensitive_jobs: Vec<FolderJob>,
+    /// Files for the encrypted bundle (`dest` = path inside the bundle).
+    pub sensitive: Vec<PlannedFile>,
 }
 
 fn wanted(list: &[String], candidates: &[&str]) -> bool {
@@ -228,9 +236,12 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
 
     // Nested planned roots are copied once, by their own job. Filtered (pack)
     // jobs copy only part of their root, so the parent still walks into them.
-    let skip: HashSet<PathBuf> = jobs
+    // Sensitive roots are always skipped, so a parent folder can never copy
+    // keys in plain.
+    let skip: SkipSet = jobs
         .iter()
         .filter(|j| j.filter.is_none())
+        .chain(&plan.sensitive_jobs)
         .map(|j| j.src_root.clone())
         .collect();
     for job in &jobs {
@@ -243,6 +254,27 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
             e.0 += n;
             e.1 += b;
         }
+    }
+    if let Some((n, b)) = plan.excluded.get(&Category::CloudPlaceholder) {
+        plan.manual_steps.push(ManualStep {
+            title: "Online-only OneDrive files were not backed up".into(),
+            detail: format!(
+                "{n} file(s), {:.1} GiB, exist only in OneDrive and were skipped so they \
+                 aren't downloaded during the backup. They stay in OneDrive: sign in on the new \
+                 PC. To include them, mark the folders \"Always keep on this device\" and run \
+                 the backup again.",
+                *b as f64 / (1u64 << 30) as f64
+            ),
+        });
+    }
+    if opts.sensitive_bundle {
+        for job in &plan.sensitive_jobs {
+            let w = walk(job, &skip, opts.exclude);
+            plan.sensitive.extend(w.files);
+            plan.issues.extend(w.issues);
+        }
+        plan.sensitive.sort_by(|a, b| a.dest.cmp(&b.dest));
+        plan.sensitive.dedup_by(|a, b| a.dest == b.dest);
     }
     plan.files
         .sort_by(|a, b| (a.priority, &a.dest).cmp(&(b.priority, &b.dest)));

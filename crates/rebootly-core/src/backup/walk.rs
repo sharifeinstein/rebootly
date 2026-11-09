@@ -111,6 +111,20 @@ pub fn name_too_long(name: &str) -> bool {
     name.len() > 255
 }
 
+const FILE_ATTRIBUTE_OFFLINE: u32 = 0x1000;
+const FILE_ATTRIBUTE_RECALL_ON_OPEN: u32 = 0x4_0000;
+const FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS: u32 = 0x40_0000;
+
+/// An online-only cloud file (OneDrive Files On-Demand): opening it would
+/// download it. Files kept on the device ("always keep") have none of these.
+pub fn is_cloud_placeholder(attrs: u32) -> bool {
+    attrs
+        & (FILE_ATTRIBUTE_OFFLINE
+            | FILE_ATTRIBUTE_RECALL_ON_OPEN
+            | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
+        != 0
+}
+
 #[cfg(windows)]
 fn attributes(m: &std::fs::Metadata) -> Option<u32> {
     use std::os::windows::fs::MetadataExt;
@@ -121,9 +135,40 @@ fn attributes(_: &std::fs::Metadata) -> Option<u32> {
     None
 }
 
-/// Walk `job`, skipping any directory listed in `skip_roots` (other planned
+/// Planned roots a walk must not enter (nested planned folders, sensitive
+/// paths). Compared case-insensitively: NTFS names are, and live paths keep
+/// the registry's casing while the walker sees the disk's.
+#[derive(Debug, Default, Clone)]
+pub struct SkipSet(HashSet<String>);
+
+impl SkipSet {
+    fn key(p: &Path) -> String {
+        p.to_string_lossy()
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_lowercase()
+    }
+    pub fn insert(&mut self, p: &Path) {
+        self.0.insert(Self::key(p));
+    }
+    pub fn contains(&self, p: &Path) -> bool {
+        self.0.contains(&Self::key(p))
+    }
+}
+
+impl FromIterator<PathBuf> for SkipSet {
+    fn from_iter<I: IntoIterator<Item = PathBuf>>(it: I) -> Self {
+        let mut s = SkipSet::default();
+        for p in it {
+            s.insert(&p);
+        }
+        s
+    }
+}
+
+/// Walk `job`, skipping any directory or file listed in `skip_roots` (other planned
 /// folders nested inside this one, so nothing is copied twice).
-pub fn walk(job: &FolderJob, skip_roots: &HashSet<PathBuf>, opts: ExcludeOptions) -> WalkResult {
+pub fn walk(job: &FolderJob, skip_roots: &SkipSet, opts: ExcludeOptions) -> WalkResult {
     let mut out = WalkResult::default();
     if let Ok(m) = std::fs::symlink_metadata(&job.src_root) {
         if m.is_file() {
@@ -216,8 +261,17 @@ pub fn walk(job: &FolderJob, skip_roots: &HashSet<PathBuf>, opts: ExcludeOptions
                 if !skip_roots.contains(&path) {
                     subdirs.push((path, child_rel));
                 }
-            } else if ft.is_file() {
+            } else if ft.is_file() && !skip_roots.contains(&path) {
                 let meta = entry.metadata().ok();
+                if let Some(m) = meta
+                    .as_ref()
+                    .filter(|m| attributes(m).is_some_and(is_cloud_placeholder))
+                {
+                    let slot = out.excluded.entry(Category::CloudPlaceholder).or_default();
+                    slot.0 += 1;
+                    slot.1 += m.len();
+                    continue;
+                }
                 out.files.push(PlannedFile {
                     src_win: format!(
                         "{}\\{}",

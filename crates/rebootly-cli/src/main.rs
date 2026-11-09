@@ -3,6 +3,7 @@
 mod backup;
 mod pack;
 mod render;
+mod sensitive;
 mod source;
 
 use std::path::PathBuf;
@@ -40,6 +41,9 @@ enum Cmd {
     /// List or validate app packs.
     #[command(subcommand)]
     Pack(pack::PackCmd),
+    /// Open an encrypted sensitive bundle (`sensitive.age`).
+    #[command(subcommand)]
+    Sensitive(sensitive::SensitiveCmd),
 }
 
 fn main() -> ExitCode {
@@ -79,6 +83,7 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
         }
         Cmd::Backup(args) => backup::run(*args),
         Cmd::Pack(cmd) => pack::run(cmd),
+        Cmd::Sensitive(cmd) => sensitive::run(cmd),
     }
 }
 

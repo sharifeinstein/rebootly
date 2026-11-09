@@ -1,7 +1,7 @@
 schema: 1
 id: dev-dotfiles
 name: Git, SSH and developer config folders
-version: 1
+version: 2
 detect:
   any:
     - path: "%USERPROFILE%\\.gitconfig"
@@ -20,9 +20,12 @@ paths:
     sensitive: true
   - src: "%USERPROFILE%\\.aws"
     sensitive: true
+  # Only credentials and config, not the CLI's caches, logs and extensions.
   - src: "%USERPROFILE%\\.azure"
+    exclude: ["cliextensions", "logs", "commands", "telemetry", "*.log"]
     sensitive: true
   - src: "%USERPROFILE%\\.kube"
+    exclude: ["cache", "http-cache"]
     sensitive: true
   - src: "%USERPROFILE%\\.docker"
     include: ["config.json"]

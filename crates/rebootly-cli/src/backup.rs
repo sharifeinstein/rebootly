@@ -60,6 +60,14 @@ pub struct BackupArgs {
     /// Parallel copy workers.
     #[arg(long, default_value_t = 4)]
     pub jobs: usize,
+    /// Store keys and credentials found by packs (SSH keys, cloud CLI
+    /// credentials, …) in the encrypted `sensitive.age`. Asks for a
+    /// passphrase (or reads `--passphrase-file` / $REBOOTLY_PASSPHRASE).
+    #[arg(long)]
+    pub sensitive: bool,
+    /// Passphrase for `--sensitive`, read from the first line of this file.
+    #[arg(long, value_name = "FILE", requires = "sensitive")]
+    pub passphrase_file: Option<PathBuf>,
     /// Show the pre-flight check and stop.
     #[arg(long)]
     pub preflight: bool,
@@ -120,6 +128,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         public: a.public,
         root_folders: a.root_folders,
         custom: a.custom,
+        sensitive_bundle: a.sensitive,
     };
     let plan = backup::plan(src, &opts)?;
     print_detected(&plan);
@@ -155,6 +164,9 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         );
     }
 
+    let passphrase = (a.sensitive && !plan.sensitive.is_empty())
+        .then(|| crate::sensitive::passphrase(a.passphrase_file.as_deref(), true))
+        .transpose()?;
     let job = match resumed {
         Some(j) => j,
         None => Job::create(target, plan.source.machine.as_deref())
@@ -164,6 +176,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
     let _awake = crate::source::Awake::new(a.live);
     let ro = RunOptions {
         jobs: a.jobs,
+        passphrase,
         ..RunOptions::default()
     };
     let (mut done, mut total, mut failed, mut last) = (0usize, 0usize, 0usize, Instant::now());
@@ -177,6 +190,9 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
             if already_done > 0 {
                 eprintln!("Resuming: {already_done} file(s) already copied");
             }
+        }
+        Event::Sensitive { files } => {
+            eprintln!("\nEncrypting {files} sensitive file(s) into sensitive.age…");
         }
         Event::File(f) => {
             done += 1;
@@ -222,6 +238,18 @@ fn print_detected(plan: &backup::Plan) {
         for (u, ids) in by_user {
             eprintln!("  {u:<20} {}", ids.join(", "));
         }
+    }
+    if !plan.sensitive.is_empty() {
+        eprintln!(
+            "Sensitive: {} file(s) (keys, credentials) go into the encrypted sensitive.age",
+            plan.sensitive.len()
+        );
+    } else if !plan.sensitive_jobs.is_empty() {
+        eprintln!(
+            "Sensitive: {} key/credential location(s) found and left out; add --sensitive to \
+             store them encrypted",
+            plan.sensitive_jobs.len()
+        );
     }
     let unused: Vec<&str> = plan
         .offered_root_folders

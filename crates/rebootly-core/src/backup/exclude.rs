@@ -32,6 +32,9 @@ pub enum Category {
     Secrets,
     /// node_modules, .git/objects (optional)
     DevArtifacts,
+    /// OneDrive (or other cloud) online-only placeholders: reading them would
+    /// download them, so the default policy is to skip (SPEC §3.5).
+    CloudPlaceholder,
 }
 
 impl Category {
@@ -49,6 +52,9 @@ impl Category {
             Category::RegistryHive => "registry hives (copied raw to system/hives)",
             Category::Secrets => "browser passwords/cookies and credential stores (never copied)",
             Category::DevArtifacts => "node_modules and .git/objects",
+            Category::CloudPlaceholder => {
+                "online-only OneDrive files (not downloaded; still in the cloud)"
+            }
         }
     }
 }

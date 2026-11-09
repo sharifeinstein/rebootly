@@ -138,20 +138,26 @@ fn find_entry_ci(dir: &Path, name: &str, allow_file: bool) -> Option<PathBuf> {
         Ok(m) => !m.file_type().is_symlink() && (allow_file || m.is_dir()),
         Err(_) => false,
     };
-    let exact = dir.join(name);
-    if ok(&exact) {
-        return Some(exact);
-    }
+    // Prefer the on-disk name: on a case-insensitive filesystem (NTFS on
+    // Windows) `dir.join(name)` "exists" in any casing, but callers compare
+    // and display paths, so return the real casing.
     let want = name.to_uppercase();
-    std::fs::read_dir(dir)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .find(|p| {
-            p.file_name()
-                .is_some_and(|n| n.to_string_lossy().to_uppercase() == want)
-                && ok(p)
-        })
+    let mut ci = None;
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for p in rd.filter_map(|e| e.ok()).map(|e| e.path()) {
+            let Some(n) = p.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+                continue;
+            };
+            if n == name && ok(&p) {
+                return Some(p);
+            }
+            if ci.is_none() && n.to_uppercase() == want && ok(&p) {
+                ci = Some(p);
+            }
+        }
+    }
+    // Unlistable directory (ACLs) but the entry itself may be reachable.
+    ci.or_else(|| Some(dir.join(name)).filter(|p| ok(p)))
 }
 
 /// Last path component of a Windows path (e.g. user folder name).

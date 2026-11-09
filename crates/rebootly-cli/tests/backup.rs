@@ -104,3 +104,69 @@ fn refuses_to_write_into_the_source_volume_even_with_force() {
     assert!(err.contains("never writes to the source disk"), "{err}");
     assert!(!inside.exists());
 }
+
+#[test]
+fn sensitive_backup_then_extract() {
+    let t = tempfile::tempdir().unwrap();
+    let fx = fixture();
+    let pf = t.path().join("pass.txt");
+    std::fs::write(&pf, "correct horse battery\r\n").unwrap();
+    let (code, job_dir, err) = rebootly(&[
+        "backup",
+        "--windows-root",
+        fx.to_str().unwrap(),
+        "--target",
+        t.path().join("usb").to_str().unwrap(),
+        "--user",
+        "Alice",
+        "--sensitive",
+        "--passphrase-file",
+        pf.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains("go into the encrypted sensitive.age"), "{err}");
+    let bundle = PathBuf::from(&job_dir).join("sensitive.age");
+    assert!(bundle.is_file());
+    assert!(!err.contains("correct horse"));
+
+    let b = bundle.to_str().unwrap();
+    let (code, out, err) = rebootly(&[
+        "sensitive",
+        "list",
+        b,
+        "--passphrase-file",
+        pf.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    assert!(
+        out.contains("users/Alice/packs/dev-dotfiles/.ssh/id_ed25519"),
+        "{out}"
+    );
+
+    let to = t.path().join("keys");
+    let (code, _, err) = rebootly(&[
+        "sensitive",
+        "extract",
+        b,
+        "--to",
+        to.to_str().unwrap(),
+        "--passphrase-file",
+        pf.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    assert!(
+        to.join("users/Alice/packs/dev-dotfiles/.ssh/id_ed25519")
+            .is_file()
+    );
+
+    std::fs::write(&pf, "wrong passphrase!").unwrap();
+    let (code, _, err) = rebootly(&[
+        "sensitive",
+        "list",
+        b,
+        "--passphrase-file",
+        pf.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 1);
+    assert!(err.contains("wrong passphrase"), "{err}");
+}

@@ -121,8 +121,32 @@ pub fn plan_user_packs(
                 }
             };
             if pp.sensitive {
-                prec.status = PackPathStatus::SensitiveNotCopied;
-                sensitive.push(e.text.clone());
+                let mut leaf = leaf_name(&e.text);
+                if used_leaves.iter().any(|l| l.eq_ignore_ascii_case(&leaf)) {
+                    leaf = format!("{leaf}_{i}");
+                }
+                used_leaves.push(leaf.clone());
+                let dest = format!("users/{uname}/packs/{}/{leaf}", pack.id);
+                let (include, exclude) = cp.filters[i].clone();
+                let filter = (!include.is_empty() || !exclude.is_empty())
+                    .then_some(PathFilter { include, exclude });
+                plan.sensitive_jobs.push(FolderJob {
+                    user: uname.into(),
+                    folder: format!("pack:{}", pack.id),
+                    src_root: local.clone(),
+                    win_root: e.text.clone(),
+                    profile_rel: rel_components(&local, profile_dir),
+                    dest_root: dest.clone(),
+                    priority: PACK_PRIORITY,
+                    filter,
+                });
+                if opts.sensitive_bundle {
+                    prec.status = PackPathStatus::Encrypted;
+                    prec.dest = Some(dest);
+                } else {
+                    prec.status = PackPathStatus::SensitiveNotCopied;
+                    sensitive.push(e.text.clone());
+                }
             } else if pp.mode == Mode::ListOnly {
                 prec.status = PackPathStatus::Listed;
                 prec.listed = list_names(&local);
@@ -194,8 +218,9 @@ pub fn plan_user_packs(
         plan.manual_steps.push(ManualStep {
             title: format!("Sensitive files of {uname} were not copied"),
             detail: format!(
-                "{} hold keys or credentials. They are only ever stored encrypted, and encrypted \
-                 storage is not available in this version yet. Copy them yourself to a safe place.",
+                "{} hold keys or credentials, which Rebootly only stores encrypted. Run the backup \
+                 again with a passphrase (--sensitive) to put them in sensitive.age, or copy them \
+                 yourself to a safe place.",
                 sensitive.join(", ")
             ),
         });

@@ -15,14 +15,19 @@
 - Canonical tree: `D:\Projects\rebootly` on the user's PC (repo root, with `.git`). GitHub: `sharifeinstein/rebootly` once the user creates it (the Claude session can't create repos).
 - Builds run in the Claude cloud workspace (Rust 1.97, crates.io reachable); the tree is mirrored to D: after each milestone. The VM behind the linked folder has git but no Rust.
 - Sync to D: (until GitHub is set up): `git gc -q && tar --exclude=./target --exclude=./.git/objects/info/commit-graph --mode=u+w -cf /mnt/user-data/outputs/rebootly-sync-<sha>.tar .`, device_commit_files it to `D:\Projects\rebootly\.rebootly-sync.tar` (use a new staged file name each time, or a stale copy is sent), then on the device `tar --overwrite -xf .rebootly-sync.tar`. The bundle can't delete: after extracting, run `git status` on the device. Any untracked leftovers from files that were deleted or moved in the repo are moved (not deleted) to `D:\Projects\_rebootly_to_delete\`, which the user empties. Always keep `--mode=u+w`: a file that arrives read-only on Windows can't be overwritten from the VM (the user would have to run `attrib -r /s`).
+- **Windows checks — split of work (2026-11-09):** the user builds, tests and runs on the real Windows PC from PowerShell (`cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`, then the live commands) and pastes the output back. Claude doesn't spend effort on Windows tooling in the cloud beyond the cheap type-check.
+- Cloud Windows type-check (optional, cheap): `scripts/check-windows.sh check|clippy` builds std from source for `x86_64-pc-windows-msvc`. Setup per new session: `git clone --depth 1 --filter=blob:none --sparse https://github.com/rust-lang/rust.git`, fetch the commit from `rustc -vV` (commit-hash), `git sparse-checkout set library`, check out `library/backtrace` (submodule, from rust-lang/backtrace-rs at the pinned sha), copy `library/` to `$(rustc --print sysroot)/lib/rustlib/src/rust/library`. `scripts/test-windows-wine.sh` (MinGW + wine64 via apt) also works for running the tests under Wine; use only if the user's PC isn't available.
+- Sync needs file deletion in the D: folder (git removes its own lock files): call device_request_delete_permission for `D:\Projects\rebootly` once per session before any git command there. Exclude the bundle itself when re-bundling on the device (`--exclude=./.rebootly-sync.tar`).
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M3 — done; M4 not started
-Last session: 2026-11-09 — M3 packs: schema/loader/detection, 9 built-in packs, .reg export, custom/Public/root folders
+Current milestone: M4 — in progress (LiveWindows, sensitive bundle, OneDrive skip done; not yet run on real Windows)
+Last session: 2026-11-09 — M4 part 1: VolumeAccess + LiveWindows (`--live`), sensitive.age, online-only OneDrive files skipped, case-insensitive skip set (fixed a plain-copy leak of sensitive paths on Windows)
 
 ## Next step
-Start M4 (live Windows, SPEC §3.5 live bits, §4 Tier 4, §9). It needs a Windows machine to test, since this workspace can't even compile `cfg(windows)` code. First task: in `rebootly-win`, a `LiveWindows` implementing `rebootly_core::Source` (reuse the core hive parser on `C:\Windows\System32\config\SOFTWARE` read with backup semantics, plus a `SHGetKnownFolderPath` cross-check), behind `cfg(windows)`, with a `--live` switch in the CLI. Then the sensitive bundle (age or AES-256-GCM + Argon2id), which unblocks `sensitive: true` pack paths. VSS, SeBackupPrivilege, OneDrive placeholders, winget/netsh/printers/tasks capture and sleep prevention come after.
+1. **User, on the Windows PC (PowerShell, elevated for the live commands):** `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; then `target\release\rebootly inspect --live`, `rebootly backup --live --preflight --target E:\` and, if that looks right, a small real run, e.g. `rebootly backup --live --target E:\ --folder Desktop --sensitive`. Paste the output (and any failed files from report.txt) back.
+2. Fix whatever that turns up (first real run of RegSaveKeyExW snapshots, backup-semantics reads, the KnownFolder cross-check).
+3. Then the rest of M4: VSS for locked files (needs the `windows` crate's COM bindings or WMI `Win32_ShadowCopy`), Tier 4 live capture (winget export, netsh wlan export into the sensitive bundle, printers, non-Microsoft scheduled tasks, hosts), the OneDrive `hydrate` policy, ADS recording, and target filesystem type on Windows.
 
 ## Milestones
 - [x] M1 Core resolver
@@ -62,7 +67,17 @@ Start M4 (live Windows, SPEC §3.5 live bits, §4 Tier 4, §9). It needs a Windo
 - 2026-11-09: Tier 3 (HKCU allowlist) and the Tier 2 shell folders are implemented as the built-in `windows-shell` pack (detect: always). Office keys come with an Office pack later.
 - 2026-11-09: `rebootly backup` grows `--packs-dir`, `--pack ID`, `--no-packs`, `--public`, `--root-folder NAME`, `--custom LABEL=WINPATH`. Non-system drive-root folders are listed ("offered") in the output and manifest but never included automatically.
 
+- 2026-11-09: Live mode requires elevation; without it `--live` fails with a clear message instead of a partial backup. Loaded hives are read from `RegSaveKeyExW` snapshots (the on-disk files are locked and lag behind); the snapshot is the raw hive kept in the backup, without logs. Snapshots live in `%TEMP%\rebootly-hives-*` and are deleted when the source is dropped.
+- 2026-11-09: Sensitive bundle format: age v1 + scrypt passphrase, tar inside, index `rebootly-sensitive.json` last (SPEC §9). Opt-in with `--sensitive` (prompt / `--passphrase-file` / `$REBOOTLY_PASSPHRASE`, min 8 chars). Rebuilt on every completed run. Manifest holds names and sizes only.
+- 2026-11-09: Sensitive pack roots are always in the walker's skip set (also without a passphrase), and the skip set compares paths case-insensitively. `resolve_ci` returns the on-disk casing. Both were found by running the tests as Windows binaries.
+- 2026-11-09: Online-only cloud files (attributes OFFLINE / RECALL_ON_OPEN / RECALL_ON_DATA_ACCESS) are skipped by default (excluded category + a Manual step), so a live backup never triggers OneDrive downloads.
+- 2026-11-09: dev-dotfiles pack v2: `.azure` and `.kube` exclude caches/logs/extensions.
+
 ## Known issues / TODO
+- Live mode has only been type-checked and run under Wine (elevation + privilege paths), never on real Windows.
+- Locked files in live mode (open PSTs, databases) fail with a sharing violation until VSS lands.
+- Offline, OneDrive placeholders can't be recognised (no attributes on Linux mounts); reading one may return an error or empty data.
+- In live mode, `dirty::assess` reads `.LOG*` files with a plain open (no backup semantics); harmless for snapshot hives, could under-report on other users' unloaded hives.
 - Hive log **replay** not implemented: dirty hives are detected (seq mismatch, or pending `HvLE` entries in .LOG1/.LOG2) and flagged; the base hive is read. Legacy (pre-8.1) `DIRT` logs are only flagged when seq numbers mismatch.
 - No **real** Win10/Win11/Entra ID hives in fixtures yet. Need sanitized NTUSER.DAT + SOFTWARE + SYSTEM from test VMs (SPEC §13). Parser paths not yet exercised by fixtures: `lf`/`li`/`ri` subkey lists and `db` big-data values (code exists, unit tests only cover `lh`).
 - `cfg(windows)` code is not compile-checked in the cloud workspace (Windows target can't be installed there); CI (`.github/workflows/ci.yml`) covers it once the repo is on GitHub.
@@ -105,4 +120,8 @@ Start M4 (live Windows, SPEC §3.5 live bits, §4 Tier 4, §9). It needs a Windo
 - `packs/*.yaml` — built-in packs (also compiled into the binary).
 - `rebootly-core::fixtures` — synthetic `win11-basic` volume (feature `fixtures`); `examples/gen_fixtures.rs` regenerates it.
 - `rebootly-cli` — `rebootly inspect …` (`render.rs`) and `rebootly backup --windows-root <p> --target <dir> | --resume <job> [--user] [--folder] [--preflight] [--force] [--jobs N]` (`backup.rs`); `rebootly pack list | validate FILE…` (`pack.rs`).
-- `rebootly-win`, `rebootly-linux`, `rebootly-tui` — placeholders for M4, M7, M6.
+- `rebootly-core::source::access` — `VolumeAccess` strategy (`OfflineAccess`), `HiveRef`, `LoadedHive`.
+- `rebootly-core::backup::sensitive` — `sensitive.age` write/list/extract, `Passphrase`.
+- `rebootly-win::live` (cfg(windows)) — `LiveWindows` (`mod.rs`), `access` (backup-semantics reads, snapshots), `regsave` (RegSaveKeyExW), `token` (elevation, privileges, SID), `knownfolder`, `power` (SleepGuard, on_battery), `wide`.
+- `rebootly-cli` also: `source.rs` (`--live` / `--windows-root`, keep-awake), `sensitive.rs` (passphrase input, `rebootly sensitive list|extract`).
+- `rebootly-linux`, `rebootly-tui` — placeholders for M7, M6.

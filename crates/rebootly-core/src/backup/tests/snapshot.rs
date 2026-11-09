@@ -20,7 +20,7 @@ struct FakeLive {
 
 impl FakeLive {
     fn snap_for(&self, file: &Path, which: HiveRef<'_>) -> Option<PathBuf> {
-        let alice = file.to_string_lossy().contains("alice");
+        let alice = file.to_string_lossy().to_lowercase().contains("alice");
         let name = match which {
             HiveRef::User(_) if alice => "alice-ntuser.snap",
             HiveRef::UserClasses(_) if alice => "alice-classes.snap",

@@ -100,8 +100,10 @@ pub struct PackPathRecord {
 pub enum PackPathStatus {
     Copied,
     Listed,
-    /// Sensitive: only ever stored in the encrypted bundle (not yet available).
+    /// Sensitive and no passphrase given: not copied at all.
     SensitiveNotCopied,
+    /// Sensitive: stored only in the encrypted bundle (`dest` is its path there).
+    Encrypted,
     NotFound,
     NotOnVolume,
     Duplicate,
@@ -159,8 +161,11 @@ pub struct Manifest {
     pub reparse_points: Vec<ReparsePoint>,
     pub excluded: Vec<ExcludedRecord>,
     pub issues: Vec<PathIssue>,
-    /// Encryption metadata, never secrets (M4).
+    /// Whole-backup encryption metadata, never secrets (not implemented yet).
     pub encryption: Option<String>,
+    /// The encrypted sensitive bundle, if one was written (SPEC §9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensitive: Option<SensitiveRecord>,
     pub manual_steps: Vec<ManualStep>,
     pub warnings: Vec<String>,
 }
@@ -191,4 +196,28 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     f.sync_all()?;
     drop(f);
     std::fs::rename(tmp, path)
+}
+
+/// What went into `sensitive.age`: names and sizes only, no hashes or
+/// contents (those are inside the encrypted bundle).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SensitiveRecord {
+    pub file: String,
+    pub format: String,
+    pub files: Vec<SensitiveEntry>,
+    pub failed: Vec<SensitiveFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SensitiveEntry {
+    pub path: String,
+    pub source: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SensitiveFailure {
+    pub path: String,
+    pub source: String,
+    pub reason: String,
 }

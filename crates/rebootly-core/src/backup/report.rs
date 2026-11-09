@@ -82,6 +82,24 @@ pub fn text(m: &Manifest) -> String {
             );
         }
     }
+    if let Some(sb) = &m.sensitive {
+        let _ = writeln!(
+            s,
+            "\nEncrypted sensitive bundle: {} ({} file(s), {}).",
+            sb.file,
+            sb.files.len(),
+            sb.format
+        );
+        let _ = writeln!(
+            s,
+            "  Open it with `rebootly sensitive extract` or `age -d {} | tar -x`; \
+             the passphrase is not stored anywhere.",
+            sb.file
+        );
+        for f in &sb.failed {
+            let _ = writeln!(s, "  not included: {} ({})", f.source, f.reason);
+        }
+    }
     if !m.excluded.is_empty() {
         let _ = writeln!(s, "\nLeft out on purpose:");
         for e in &m.excluded {
