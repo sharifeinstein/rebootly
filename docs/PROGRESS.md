@@ -14,6 +14,7 @@
 ## Repo / environment
 - Canonical tree: `D:\Projects\Migrateit` on the user's PC (repo root, with `.git`). GitHub: not set up yet (no GitHub account linked to the Claude session).
 - Builds run in the Claude cloud workspace (Rust 1.97, crates.io reachable); the tree is mirrored to D: after each milestone. The VM behind the linked folder has git but no Rust.
+- Sync to D: (until GitHub is set up): `git gc -q && tar --exclude=./target --exclude=./.git/objects/info/commit-graph --mode=u+w -cf /mnt/user-data/outputs/migrate-sync-<sha>.tar .`, device_commit_files it to `D:\Projects\Migrateit\.migrate-sync.tar` (use a new staged file name each time, or a stale copy is sent), then on the device `tar --overwrite -xf .migrate-sync.tar`. Files that arrive read-only on Windows can't be overwritten from the VM; the user clears them with `attrib -r /s`.
 - To resume in a new chat: copy `D:\Projects\Migrateit` into the workspace (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
