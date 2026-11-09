@@ -90,6 +90,7 @@ Scan every mounted volume for `\Windows\System32\config\SOFTWARE`. **Never assum
 ### 3.6 Exclusions (always)
 `pagefile.sys`, `hiberfil.sys`, `swapfile.sys`, `$Recycle.Bin`, `System Volume Information`, `%TEMP%`, `*.ost`, `Thumbs.db`, `INetCache`, `CrashDumps`, `WER`, every browser cache dir (`Cache`, `Code Cache`, `GPUCache`, `Service Worker\CacheStorage`, `ShaderCache`), `Packages\*\AC`, `Packages\*\TempState`. `NTUSER.DAT*` and `UsrClass.dat*` are copied raw into `_system/hives/`, never restored over a live profile. Optional: `node_modules`, `.git/objects`. Keep `desktop.ini`.
 **Never copy** browser `Login Data`, `Cookies`, `Local State` encryption keys, or Credential Manager vaults (they can't decrypt elsewhere, and copying them looks like infostealer behaviour).
+Implemented list (M2): Chromium `Login Data*`, `Cookies`, `Local State`; Firefox `logins.json`, `key3/key4.db`, `cookies.sqlite`, `signons.sqlite`; `Microsoft\Credentials`, `Microsoft\Vault`, and the DPAPI `Microsoft\Protect` folder. AppData-only rules (caches, secrets) match only under `AppData\`, so a user's own `Documents\Cache` is still copied.
 
 ---
 
@@ -230,7 +231,7 @@ USB (Ventoy)
 
 ## 10. Manifest (`manifest.json`, schema-versioned)
 
-Tool version, schema version, job ID, timestamps; source machine name, OS edition/build, environment (live/winpe/linux); per user: SID, name, account type, profile path, KNOWNFOLDERID→path map; pack IDs and versions used; per file: relative path, size, mtime, attributes, SHA-256, status (ok/skipped/failed + reason); recorded reparse points; excluded categories; encryption info (no secrets); the Manual-steps list.
+Tool version, schema version, job ID, timestamps, `complete` flag; source machine name, OS edition/build, environment (live/winpe/linux); per user: SID, name, account type, profile path, KNOWNFOLDERID→path map; pack IDs and versions used; per file: relative path, size, mtime, attributes, SHA-256, status (ok/skipped/failed + reason); recorded reparse points; excluded categories; encryption info (no secrets); the Manual-steps list. Also (M2): per-user `hive_dirty`, pre-flight path `issues`, and `warnings`. Folders not copied stay in the KNOWNFOLDERID map with `included: false` and a note. `job.state` is JSON lines (header + one `FileEntry` per file, same shape as the manifest's); a file is skipped on resume when its size and mtime are unchanged and the copy on the target has the right size. Raw hives go to `system/hives/<user>/`.
 
 ### Backup folder layout
 ```

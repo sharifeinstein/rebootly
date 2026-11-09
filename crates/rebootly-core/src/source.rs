@@ -69,8 +69,10 @@ pub struct ResolvedFolder {
     pub onedrive: bool,
 }
 
-pub trait Source {
+pub trait Source: Send + Sync {
     fn environment(&self) -> Environment;
+    /// Root of the source system volume (backups must never land inside it).
+    fn source_root(&self) -> &Path;
     fn os_info(&self) -> &OsInfo;
     fn profile_dirs(&self) -> &ProfileDirs;
     /// Profiles from `ProfileList`, minus system accounts.
@@ -158,8 +160,8 @@ impl OfflineVolume {
                 let state = dirty::assess(&hp, h.header());
                 if state.is_dirty() {
                     p.warnings.push(
-                        "NTUSER.DAT is dirty (unapplied transaction logs); read the base hive, \
-                         recent settings may be missing"
+                        "NTUSER.DAT is dirty (unapplied transaction logs): recent settings may be \
+                         missing from what was read; the hive and its logs are kept raw in backups"
                             .into(),
                     );
                 }
@@ -174,6 +176,11 @@ impl OfflineVolume {
                 }
                 p.hive = Some(UserHive { path: hp, state });
             }
+            Err(_) if !hp.exists() => p.warnings.push(
+                "NTUSER.DAT not found (user never signed in, or the profile is damaged); \
+                 default folder locations used"
+                    .into(),
+            ),
             Err(err) => p.warnings.push(format!("cannot read NTUSER.DAT: {err}")),
         }
         p
@@ -183,6 +190,10 @@ impl OfflineVolume {
 impl Source for OfflineVolume {
     fn environment(&self) -> Environment {
         self.environment
+    }
+
+    fn source_root(&self) -> &Path {
+        &self.install.volume_root
     }
 
     fn os_info(&self) -> &OsInfo {

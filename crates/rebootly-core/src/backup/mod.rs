@@ -1,0 +1,41 @@
+//! Backup engine (SPEC §3.5, §3.6, §10): plan → pre-flight → run.
+//!
+//! Reads the source only through `Source::open_read`; writes only into the
+//! job folder on the target.
+
+pub mod copy;
+pub mod exclude;
+pub mod manifest;
+pub mod plan;
+pub mod preflight;
+pub mod report;
+pub mod run;
+pub mod state;
+pub mod time;
+pub mod walk;
+
+pub use plan::{Plan, PlanOptions, plan};
+pub use run::{Event, Job, RunOptions, run};
+
+/// Pre-flight for a plan against a job (accounts for resumed files).
+pub fn preflight(
+    plan: &Plan,
+    job_target: &std::path::Path,
+    job: Option<&Job>,
+) -> preflight::Preflight {
+    let todo_bytes = match job {
+        Some(j) => j.todo(plan).1,
+        None => plan.files.iter().map(|f| f.size).sum(),
+    };
+    preflight::check(
+        &plan.files,
+        todo_bytes,
+        &plan.labels,
+        &plan.issues,
+        job_target,
+        &plan.source_root,
+    )
+}
+
+#[cfg(test)]
+mod tests;

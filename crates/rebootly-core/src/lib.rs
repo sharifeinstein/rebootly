@@ -2,6 +2,7 @@
 //!
 //! Everything here is platform-neutral and must build and test on Linux.
 
+pub mod backup;
 pub mod env;
 pub mod expand;
 pub mod folders;

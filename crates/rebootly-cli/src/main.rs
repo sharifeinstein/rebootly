@@ -1,5 +1,6 @@
 //! `rebootly` command-line interface (thin layer over rebootly-core).
 
+mod backup;
 mod render;
 
 use std::path::PathBuf;
@@ -30,11 +31,13 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Back up user folders (Tier 1) and raw registry hives.
+    Backup(backup::BackupArgs),
 }
 
 fn main() -> ExitCode {
     match run(Cli::parse()) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("error: {e:#}");
             ExitCode::FAILURE
@@ -42,7 +45,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: Cli) -> anyhow::Result<()> {
+fn run(cli: Cli) -> anyhow::Result<u8> {
     match cli.cmd {
         Cmd::Inspect {
             windows_root,
@@ -61,8 +64,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             } else {
                 print!("{}", render::text(&report, &src.install().volume_root));
             }
-            Ok(())
+            Ok(0)
         }
+        Cmd::Backup(args) => backup::run(args),
     }
 }
 
