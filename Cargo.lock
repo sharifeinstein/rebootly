@@ -307,6 +307,7 @@ dependencies = [
  "anyhow",
  "clap",
  "rebootly-core",
+ "rebootly-win",
  "serde_json",
  "tempfile",
 ]
@@ -344,6 +345,8 @@ name = "rebootly-win"
 version = "0.1.0"
 dependencies = [
  "rebootly-core",
+ "thiserror",
+ "windows-sys",
 ]
 
 [[package]]

@@ -98,3 +98,21 @@ fn profile_vars_override_user_environment() {
     assert_eq!(vars.get("USERPROFILE"), Some(r"C:\Users\bob"));
     assert_eq!(vars.expand("%TEMP%").text, r"C:\Users\bob\T");
 }
+
+#[test]
+fn cross_check_reports_only_real_differences() {
+    let f = resolve_user_folders(None, &base(), r"C:\Users\bob").unwrap();
+    let docs = find(&f, "Documents").guid;
+    let desk = find(&f, "Desktop").guid;
+    let warn = cross_check(&f, |g| {
+        if g == docs {
+            Some(r"C:\Users\bob\OneDrive\Documents".into())
+        } else if g == desk {
+            Some(r"c:\users\BOB\Desktop\".into()) // same, other casing
+        } else {
+            None
+        }
+    });
+    assert_eq!(warn.len(), 1, "{warn:?}");
+    assert!(warn[0].starts_with("Documents: registry says"));
+}

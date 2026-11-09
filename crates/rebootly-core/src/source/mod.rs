@@ -1,8 +1,14 @@
-//! The `Source` abstraction (SPEC §3.2) and its offline implementation.
+//! The `Source` abstraction (SPEC §3.2) and `OfflineVolume`, a Windows
+//! install read through a [`VolumeAccess`] strategy.
 //!
-//! Packs, manifest and copy engine talk only to `dyn Source`. `LiveWindows`
-//! (rebootly-win, M4) will implement the same trait. Installed-app listing
-//! joins the trait in M3/M4 together with its first real implementation.
+//! Packs, manifest and copy engine talk only to `dyn Source`. Offline,
+//! `OfflineVolume::open` reads a mounted volume. `rebootly-win`'s
+//! `LiveWindows` wraps `OfflineVolume::open_with` and a live access strategy,
+//! so the resolution logic is the same in every mode.
+
+mod access;
+
+pub use access::{HiveRef, LoadedHive, OfflineAccess, VolumeAccess, clean_state};
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -13,13 +19,13 @@ use crate::apps::{InstalledApp, machine_apps};
 use crate::env::Environment;
 use crate::expand::VarSet;
 use crate::folders::{FolderPath, resolve_user_folders, user_vars};
-use crate::hive::dirty::{self, HiveState};
+use crate::hive::dirty::HiveState;
 use crate::hive::{Hive, HiveError};
 use crate::install::{OsInfo, WindowsInstall, read_os_info};
 use crate::profiles::{
     AccountKind, ProfileDirs, SkippedProfile, has_microsoft_account, read_profile_list, system_vars,
 };
-use crate::winpath::{Mapped, map_to_volume, resolve_ci};
+use crate::winpath::{Mapped, resolve_ci};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
@@ -45,6 +51,8 @@ fn hive_err(path: &Path) -> impl FnOnce(HiveError) -> SourceError + '_ {
 pub struct UserHive {
     pub path: PathBuf,
     pub state: HiveState,
+    /// Clean copy saved from the live registry (live mode, signed-in user).
+    pub snapshot: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -89,12 +97,22 @@ pub trait Source: Send + Sync {
     fn user_vars(&self, profile: &Profile) -> Result<VarSet, SourceError>;
     /// Map a Windows path from the source machine to a local path.
     fn map_path(&self, win: &str) -> Mapped;
+    /// A clean copy of hive `file` to back up instead of the file and its
+    /// logs (live mode, hive loaded in the registry). Default: none.
+    fn hive_snapshot(
+        &self,
+        _file: &Path,
+        _which: HiveRef<'_>,
+    ) -> Result<Option<PathBuf>, SourceError> {
+        Ok(None)
+    }
 }
 
 /// Windows installed on a mounted volume (WinPE or Linux; SPEC §7).
 #[derive(Debug)]
 pub struct OfflineVolume {
     install: WindowsInstall,
+    access: Box<dyn VolumeAccess>,
     environment: Environment,
     os: OsInfo,
     vars: VarSet,
@@ -105,20 +123,34 @@ pub struct OfflineVolume {
 }
 
 impl OfflineVolume {
+    /// Open a mounted volume offline (read-only).
     pub fn open(root: &Path) -> Result<Self, SourceError> {
+        Self::open_with(root, Box::new(OfflineAccess))
+    }
+
+    /// Open the install at `root` through `access` (e.g. the live registry).
+    pub fn open_with(root: &Path, access: Box<dyn VolumeAccess>) -> Result<Self, SourceError> {
         let install =
             WindowsInstall::from_path(root).ok_or_else(|| SourceError::NotWindows(root.into()))?;
         let sw_path = install.config_hive("SOFTWARE");
-        let software = Hive::open(&sw_path).map_err(hive_err(&sw_path))?;
+        let software = access
+            .load_hive(&sw_path, HiveRef::Software)
+            .map_err(hive_err(&sw_path))?
+            .hive;
         // SYSTEM is optional: we only use it for computer name and env vars.
-        let system = Hive::open(&install.config_hive("SYSTEM")).ok();
-        let os = read_os_info(&software, system.as_ref()).map_err(hive_err(&sw_path))?;
-        let vars = system_vars(&software, system.as_ref()).map_err(hive_err(&sw_path))?;
+        let system = access
+            .load_hive(&install.config_hive("SYSTEM"), HiveRef::System)
+            .ok()
+            .map(|l| l.hive);
+        let system = system.as_ref();
+        let os = read_os_info(&software, system).map_err(hive_err(&sw_path))?;
+        let vars = system_vars(&software, system).map_err(hive_err(&sw_path))?;
         let list = read_profile_list(&software, &vars).map_err(hive_err(&sw_path))?;
         let apps = machine_apps(&software).map_err(hive_err(&sw_path))?;
         Ok(OfflineVolume {
+            environment: access.environment(),
             install,
-            environment: Environment::detect(),
+            access,
             os,
             vars,
             entries: list.entries,
@@ -133,7 +165,13 @@ impl OfflineVolume {
     }
 
     pub fn map(&self, win: &str) -> Mapped {
-        map_to_volume(win, self.os.system_drive(), &self.install.volume_root)
+        self.access
+            .map(win, self.os.system_drive(), &self.install.volume_root)
+    }
+
+    /// The access strategy (live or offline) this volume is read through.
+    pub fn access(&self) -> &dyn VolumeAccess {
+        self.access.as_ref()
     }
 
     fn ntuser_path(local_profile: &Path) -> PathBuf {
@@ -165,9 +203,12 @@ impl OfflineVolume {
             }
         };
         let hp = Self::ntuser_path(&dir);
-        match Hive::open(&hp) {
-            Ok(h) => {
-                let state = dirty::assess(&hp, h.header());
+        match self.access.load_hive(&hp, HiveRef::User(&e.sid)) {
+            Ok(LoadedHive {
+                hive: h,
+                state,
+                snapshot,
+            }) => {
                 if state.is_dirty() {
                     p.warnings.push(
                         "NTUSER.DAT is dirty (unapplied transaction logs): recent settings may be \
@@ -184,7 +225,11 @@ impl OfflineVolume {
                 {
                     p.kind = AccountKind::Microsoft;
                 }
-                p.hive = Some(UserHive { path: hp, state });
+                p.hive = Some(UserHive {
+                    path: hp,
+                    state,
+                    snapshot,
+                });
             }
             Err(_) if !hp.exists() => p.warnings.push(
                 "NTUSER.DAT not found (user never signed in, or the profile is damaged); \
@@ -236,6 +281,16 @@ impl Source for OfflineVolume {
         self.map(win)
     }
 
+    fn hive_snapshot(
+        &self,
+        file: &Path,
+        which: HiveRef<'_>,
+    ) -> Result<Option<PathBuf>, SourceError> {
+        self.access
+            .hive_snapshot(file, which)
+            .map_err(hive_err(file))
+    }
+
     fn resolve_folders(&self, profile: &Profile) -> Result<Vec<ResolvedFolder>, SourceError> {
         let hive = self.open_user_hive(profile)?;
         let hp = profile
@@ -267,7 +322,7 @@ impl Source for OfflineVolume {
     }
 
     fn open_read(&self, path: &Path) -> std::io::Result<File> {
-        File::open(path) // read-only by construction
+        self.access.open_read(path)
     }
 
     fn machine_apps(&self) -> &[InstalledApp] {
@@ -276,7 +331,11 @@ impl Source for OfflineVolume {
 
     fn open_user_hive(&self, profile: &Profile) -> Result<Option<Hive>, SourceError> {
         match &profile.hive {
-            Some(h) => Hive::open(&h.path).map(Some).map_err(hive_err(&h.path)),
+            Some(h) => self
+                .access
+                .load_hive(&h.path, HiveRef::User(&profile.sid))
+                .map(|l| Some(l.hive))
+                .map_err(hive_err(&h.path)),
             None => Ok(None),
         }
     }

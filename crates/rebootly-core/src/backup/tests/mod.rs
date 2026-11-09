@@ -278,3 +278,4 @@ fn folder_filter_limits_plan() {
 }
 
 mod packs;
+mod snapshot;

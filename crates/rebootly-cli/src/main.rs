@@ -3,12 +3,12 @@
 mod backup;
 mod pack;
 mod render;
+mod source;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use rebootly_core::OfflineVolume;
 use rebootly_core::install::WindowsInstall;
 
 #[derive(Parser)]
@@ -23,8 +23,11 @@ enum Cmd {
     /// Show users and their real folder paths for a Windows installation.
     Inspect {
         /// Volume root containing `Windows\` (or the Windows directory itself).
-        #[arg(long, value_name = "PATH", conflicts_with = "scan")]
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["scan", "live"])]
         windows_root: Option<PathBuf>,
+        /// Inspect the running Windows (needs an elevated prompt).
+        #[arg(long, conflicts_with = "scan")]
+        live: bool,
         /// Scan these directories (and their subdirectories) for installs.
         #[arg(long, value_name = "DIR", num_args = 1..)]
         scan: Vec<PathBuf>,
@@ -33,7 +36,7 @@ enum Cmd {
         json: bool,
     },
     /// Back up user folders (Tier 1) and raw registry hives.
-    Backup(backup::BackupArgs),
+    Backup(Box<backup::BackupArgs>),
     /// List or validate app packs.
     #[command(subcommand)]
     Pack(pack::PackCmd),
@@ -53,24 +56,28 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
     match cli.cmd {
         Cmd::Inspect {
             windows_root,
+            live,
             scan,
             json,
         } => {
             let root = match (windows_root, scan.is_empty()) {
-                (Some(r), _) => r,
-                (None, false) => pick_install(&scan)?,
-                (None, true) => anyhow::bail!("give --windows-root <PATH> or --scan <DIR>..."),
+                (Some(r), _) => Some(r),
+                (None, false) => Some(pick_install(&scan)?),
+                (None, true) if live => None,
+                (None, true) => {
+                    anyhow::bail!("give --windows-root <PATH>, --scan <DIR>... or --live")
+                }
             };
-            let src = OfflineVolume::open(&root)?;
-            let report = rebootly_core::inspect::inspect(&src)?;
+            let src = source::open(live, root.as_ref())?;
+            let report = rebootly_core::inspect::inspect(src.as_ref())?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
-                print!("{}", render::text(&report, &src.install().volume_root));
+                print!("{}", render::text(&report, src.source_root()));
             }
             Ok(0)
         }
-        Cmd::Backup(args) => backup::run(args),
+        Cmd::Backup(args) => backup::run(*args),
         Cmd::Pack(cmd) => pack::run(cmd),
     }
 }

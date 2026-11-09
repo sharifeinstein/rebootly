@@ -11,7 +11,7 @@ use super::manifest::{CustomRecord, FolderRecord, ManualStep, PackRecord, Source
 use super::walk::{FolderJob, PathIssue, PlannedFile, ReparsePoint, rel_components, walk};
 use crate::hive::dirty;
 use crate::packs::schema::CompiledPack;
-use crate::source::{Profile, Source, SourceError};
+use crate::source::{HiveRef, Profile, Source, SourceError};
 use crate::winpath::{Mapped, resolve_ci};
 
 /// Tier 1 folders and their priority (SPEC §3.5: Desktop, Documents,
@@ -147,7 +147,7 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
             plan.users.push(record);
             continue;
         };
-        add_hives(&mut plan, &profile, profile_dir, &uname);
+        add_hives(&mut plan, src, &profile, profile_dir, &uname)?;
 
         let resolved = src.resolve_folders(&profile)?;
         for f in &resolved {
@@ -250,30 +250,60 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
 }
 
 /// Raw copies of NTUSER.DAT, UsrClass.dat and their logs (SPEC §3.4, §3.6).
-fn add_hives(plan: &mut Plan, profile: &Profile, profile_dir: &Path, uname: &str) {
-    let Some(hive) = &profile.hive else { return };
+/// A hive loaded in the live registry is copied from its clean snapshot
+/// instead (no logs: the snapshot has nothing pending).
+fn add_hives(
+    plan: &mut Plan,
+    src: &dyn Source,
+    profile: &Profile,
+    profile_dir: &Path,
+    uname: &str,
+) -> Result<(), SourceError> {
+    let Some(hive) = &profile.hive else {
+        return Ok(());
+    };
     let usrclass_rel: Vec<String> = ["AppData", "Local", "Microsoft", "Windows", "UsrClass.dat"]
         .map(String::from)
         .to_vec();
     let (usrclass, has_usrclass) = resolve_ci(profile_dir, &usrclass_rel);
-    let mut paths = vec![hive.path.clone()];
-    paths.extend(dirty::log_paths(&hive.path));
-    if has_usrclass {
-        paths.push(usrclass.clone());
-        paths.extend(dirty::log_paths(&usrclass));
+    // (file on the profile, file to read)
+    let mut paths: Vec<(PathBuf, PathBuf)> = Vec::new();
+    match &hive.snapshot {
+        Some(snap) => paths.push((hive.path.clone(), snap.clone())),
+        None => {
+            paths.push((hive.path.clone(), hive.path.clone()));
+            paths.extend(
+                dirty::log_paths(&hive.path)
+                    .into_iter()
+                    .map(|p| (p.clone(), p)),
+            );
+        }
     }
-    for p in paths {
-        let Ok(meta) = std::fs::symlink_metadata(&p) else {
+    if has_usrclass {
+        match src.hive_snapshot(&usrclass, HiveRef::UserClasses(&profile.sid))? {
+            Some(snap) => paths.push((usrclass.clone(), snap)),
+            None => {
+                paths.push((usrclass.clone(), usrclass.clone()));
+                paths.extend(
+                    dirty::log_paths(&usrclass)
+                        .into_iter()
+                        .map(|p| (p.clone(), p)),
+                );
+            }
+        }
+    }
+    for (orig, read_from) in paths {
+        let Ok(meta) = std::fs::symlink_metadata(&read_from) else {
             continue;
         };
         if !meta.is_file() {
             continue;
         }
-        let name = p
+        let name = orig
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let rel = rel_components(&p, profile_dir).unwrap_or_else(|| vec![name.clone()]);
+        let rel = rel_components(&orig, profile_dir).unwrap_or_else(|| vec![name.clone()]);
         plan.files.push(PlannedFile {
             src_win: format!(
                 r"{}\{}",
@@ -285,7 +315,8 @@ fn add_hives(plan: &mut Plan, profile: &Profile, profile_dir: &Path, uname: &str
             mtime: meta.modified().ok(),
             priority: HIVES_PRIORITY,
             attributes: None,
-            src: p,
+            src: read_from,
         });
     }
+    Ok(())
 }

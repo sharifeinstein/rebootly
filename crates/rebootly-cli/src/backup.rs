@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use rebootly_core::OfflineVolume;
 use rebootly_core::backup::exclude::ExcludeOptions;
 use rebootly_core::backup::preflight::{Preflight, gib};
 use rebootly_core::backup::{self, Event, Job, PlanOptions, RunOptions};
@@ -13,8 +12,17 @@ use rebootly_core::backup::{self, Event, Job, PlanOptions, RunOptions};
 #[derive(clap::Args)]
 pub struct BackupArgs {
     /// Volume root containing `Windows\` (or the Windows directory itself).
-    #[arg(long, value_name = "PATH")]
-    pub windows_root: PathBuf,
+    #[arg(
+        long,
+        value_name = "PATH",
+        required_unless_present = "live",
+        conflicts_with = "live"
+    )]
+    pub windows_root: Option<PathBuf>,
+    /// Back up the running Windows (needs an elevated prompt). Loaded hives
+    /// are saved from the live registry; the PC is kept awake.
+    #[arg(long)]
+    pub live: bool,
     /// Where to write the backup; a `<MACHINE>_<DATE>` folder is created here.
     #[arg(long, value_name = "DIR", required_unless_present = "resume")]
     pub target: Option<PathBuf>,
@@ -95,7 +103,8 @@ fn print_preflight(p: &Preflight) {
 
 /// Returns the process exit code: 0 all copied, 2 finished with failures.
 pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
-    let src = OfflineVolume::open(&a.windows_root)?;
+    let src = crate::source::open(a.live, a.windows_root.as_ref())?;
+    let src = src.as_ref();
     let packs = if a.no_packs {
         Vec::new()
     } else {
@@ -112,7 +121,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         root_folders: a.root_folders,
         custom: a.custom,
     };
-    let plan = backup::plan(&src, &opts)?;
+    let plan = backup::plan(src, &opts)?;
     print_detected(&plan);
     if plan.users.is_empty() {
         bail!("no matching users to back up");
@@ -152,12 +161,13 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
             .context("creating the backup folder")?,
     };
     eprintln!("Backing up to {}", job.dir.display());
+    let _awake = crate::source::Awake::new(a.live);
     let ro = RunOptions {
         jobs: a.jobs,
         ..RunOptions::default()
     };
     let (mut done, mut total, mut failed, mut last) = (0usize, 0usize, 0usize, Instant::now());
-    let manifest = backup::run(&src, &plan, &job, &ro, &mut |e| match e {
+    let manifest = backup::run(src, &plan, &job, &ro, &mut |e| match e {
         Event::Start {
             files,
             already_done,

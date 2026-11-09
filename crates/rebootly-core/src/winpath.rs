@@ -94,6 +94,24 @@ pub fn map_to_volume(win: &str, system_drive: char, volume_root: &Path) -> Mappe
     }
 }
 
+/// Map a Windows path on the running system itself (live mode): every drive
+/// letter is real, so the path is used as it is (normalised to `X:\a\b`).
+/// Network paths are not followed; `..` is refused.
+pub fn map_live(win: &str) -> Mapped {
+    match WinPath::parse(win) {
+        WinPath::Drive { letter, parts } => {
+            if parts.iter().any(|p| p == "..") {
+                return Mapped::Unmappable;
+            }
+            let path = PathBuf::from(format!("{letter}:\\{}", parts.join("\\")));
+            let exists = path.exists();
+            Mapped::Local { path, exists }
+        }
+        WinPath::Unc(_) => Mapped::Network,
+        WinPath::Other(_) => Mapped::Unmappable,
+    }
+}
+
 /// Resolve `parts` under `root`, matching each component case-insensitively.
 /// Returns the best path (real casing where found) and whether it exists.
 /// Symlinked components are not followed (reparse points: SPEC §3.5).
@@ -150,6 +168,17 @@ pub fn leaf(win: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_mapping_keeps_every_drive() {
+        let m = map_live(r"d:\Data\Work\");
+        assert_eq!(m.local_path(), Some(Path::new(r"D:\Data\Work")));
+        assert!(matches!(
+            map_live(r"C:\Users\..\Windows"),
+            Mapped::Unmappable
+        ));
+        assert!(matches!(map_live(r"\\nas\home"), Mapped::Network));
+    }
 
     #[test]
     fn parses_forms() {

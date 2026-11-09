@@ -227,3 +227,22 @@ pub fn user_vars(base: &VarSet, ntuser: Option<&Hive>, profile_path: &str) -> Hi
 
 #[cfg(test)]
 mod tests;
+
+/// Live-mode cross-check (SPEC §3.4): compare folders resolved from the
+/// hive with what Windows reports (`api`, e.g. `SHGetKnownFolderPath` by
+/// GUID). The hive result is kept; each disagreement becomes a warning.
+pub fn cross_check(resolved: &[FolderPath], api: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    let norm = |s: &str| s.trim_end_matches('\\').to_lowercase();
+    resolved
+        .iter()
+        .filter_map(|f| {
+            let reported = api(f.guid)?;
+            (norm(&reported) != norm(&f.win_path)).then(|| {
+                format!(
+                    "{}: registry says {} but Windows reports {}; using the registry value",
+                    f.name, f.win_path, reported
+                )
+            })
+        })
+        .collect()
+}
