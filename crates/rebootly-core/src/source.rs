@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::apps::{InstalledApp, machine_apps};
 use crate::env::Environment;
 use crate::expand::VarSet;
 use crate::folders::{FolderPath, resolve_user_folders, user_vars};
@@ -82,6 +83,12 @@ pub trait Source: Send + Sync {
     /// Open a local file for reading. Never opens for write.
     fn open_read(&self, path: &Path) -> std::io::Result<File>;
     fn open_user_hive(&self, profile: &Profile) -> Result<Option<Hive>, SourceError>;
+    /// Machine-wide installed apps (Uninstall keys, 64- and 32-bit).
+    fn machine_apps(&self) -> &[InstalledApp];
+    /// The user's variables (`%APPDATA%`, `%OneDrive%`, …) from the source.
+    fn user_vars(&self, profile: &Profile) -> Result<VarSet, SourceError>;
+    /// Map a Windows path from the source machine to a local path.
+    fn map_path(&self, win: &str) -> Mapped;
 }
 
 /// Windows installed on a mounted volume (WinPE or Linux; SPEC §7).
@@ -94,6 +101,7 @@ pub struct OfflineVolume {
     entries: Vec<crate::profiles::ProfileEntry>,
     skipped: Vec<SkippedProfile>,
     dirs: ProfileDirs,
+    apps: Vec<InstalledApp>,
 }
 
 impl OfflineVolume {
@@ -107,6 +115,7 @@ impl OfflineVolume {
         let os = read_os_info(&software, system.as_ref()).map_err(hive_err(&sw_path))?;
         let vars = system_vars(&software, system.as_ref()).map_err(hive_err(&sw_path))?;
         let list = read_profile_list(&software, &vars).map_err(hive_err(&sw_path))?;
+        let apps = machine_apps(&software).map_err(hive_err(&sw_path))?;
         Ok(OfflineVolume {
             install,
             environment: Environment::detect(),
@@ -115,6 +124,7 @@ impl OfflineVolume {
             entries: list.entries,
             skipped: list.skipped,
             dirs: list.dirs,
+            apps,
         })
     }
 
@@ -212,6 +222,20 @@ impl Source for OfflineVolume {
         &self.skipped
     }
 
+    fn user_vars(&self, profile: &Profile) -> Result<VarSet, SourceError> {
+        let hive = self.open_user_hive(profile)?;
+        let hp = profile
+            .hive
+            .as_ref()
+            .map(|h| h.path.clone())
+            .unwrap_or_default();
+        user_vars(&self.vars, hive.as_ref(), &profile.profile_path).map_err(hive_err(&hp))
+    }
+
+    fn map_path(&self, win: &str) -> Mapped {
+        self.map(win)
+    }
+
     fn resolve_folders(&self, profile: &Profile) -> Result<Vec<ResolvedFolder>, SourceError> {
         let hive = self.open_user_hive(profile)?;
         let hp = profile
@@ -244,6 +268,10 @@ impl Source for OfflineVolume {
 
     fn open_read(&self, path: &Path) -> std::io::Result<File> {
         File::open(path) // read-only by construction
+    }
+
+    fn machine_apps(&self) -> &[InstalledApp] {
+        &self.apps
     }
 
     fn open_user_hive(&self, profile: &Profile) -> Result<Option<Hive>, SourceError> {

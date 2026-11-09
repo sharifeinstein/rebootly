@@ -1,0 +1,15 @@
+schema: 1
+id: powershell
+name: PowerShell profiles and modules
+version: 1
+detect:
+  any:
+    - path: "%KF:Documents%\\PowerShell"
+    - path: "%KF:Documents%\\WindowsPowerShell"
+paths:
+  # Inside Documents (which may be redirected to OneDrive); copied here once.
+  - src: "%KF:Documents%\\PowerShell"
+    rewrite: true
+  - src: "%KF:Documents%\\WindowsPowerShell"
+    rewrite: true
+notes: "Modules installed from the PowerShell Gallery may need `Install-Module` again."

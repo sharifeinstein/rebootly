@@ -2,6 +2,7 @@
 //!
 //! Everything here is platform-neutral and must build and test on Linux.
 
+pub mod apps;
 pub mod backup;
 pub mod env;
 pub mod expand;
@@ -9,7 +10,9 @@ pub mod folders;
 pub mod hive;
 pub mod inspect;
 pub mod install;
+pub mod packs;
 pub mod profiles;
+pub mod regfile;
 pub mod source;
 pub mod winpath;
 

@@ -1,0 +1,22 @@
+schema: 1
+id: vscode
+name: Visual Studio Code
+version: 1
+detect:
+  any:
+    - path: "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe"
+    - path: "%APPDATA%\\Code\\User\\settings.json"
+    - uninstall_name: "Microsoft Visual Studio Code*"
+winget_id: Microsoft.VisualStudioCode
+paths:
+  - src: "%APPDATA%\\Code\\User"
+    include: ["settings.json", "keybindings.json", "tasks.json", "snippets/**", "profiles/**"]
+    rewrite: true
+  - src: "%USERPROFILE%\\.vscode\\extensions"
+    mode: list_only
+requires_closed: ["Code.exe"]
+os: [win10, win11]
+notes: "Extensions are reinstalled with `code --install-extension`."
+post_restore:
+  - run: "code --install-extension {each:extensions}"
+    live_only: true

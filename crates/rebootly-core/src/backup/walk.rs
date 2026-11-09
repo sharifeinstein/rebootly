@@ -12,6 +12,7 @@ use std::time::SystemTime;
 use serde::Serialize;
 
 use super::exclude::{Category, ExcludeOptions, classify};
+use crate::packs::glob::Glob;
 
 /// One folder to back up.
 #[derive(Debug, Clone)]
@@ -28,6 +29,25 @@ pub struct FolderJob {
     pub dest_root: String,
     /// Sort key from the priority order (lower first).
     pub priority: u32,
+    /// Pack include/exclude globs, relative to `src_root`.
+    pub filter: Option<PathFilter>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PathFilter {
+    /// Empty = everything.
+    pub include: Vec<Glob>,
+    pub exclude: Vec<Glob>,
+}
+
+impl PathFilter {
+    fn skip_dir(&self, rel: &str) -> bool {
+        self.exclude.iter().any(|g| g.matches(rel))
+    }
+    fn skip_file(&self, rel: &str) -> bool {
+        self.skip_dir(rel)
+            || (!self.include.is_empty() && !self.include.iter().any(|g| g.matches(rel)))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +125,12 @@ fn attributes(_: &std::fs::Metadata) -> Option<u32> {
 /// folders nested inside this one, so nothing is copied twice).
 pub fn walk(job: &FolderJob, skip_roots: &HashSet<PathBuf>, opts: ExcludeOptions) -> WalkResult {
     let mut out = WalkResult::default();
+    if let Ok(m) = std::fs::symlink_metadata(&job.src_root) {
+        if m.is_file() {
+            walk_single_file(job, &m, opts, &mut out);
+            return out;
+        }
+    }
     // (dir on disk, components relative to src_root)
     let mut stack: Vec<(PathBuf, Vec<String>)> = vec![(job.src_root.clone(), Vec::new())];
     while let Some((dir, rel)) = stack.pop() {
@@ -180,6 +206,12 @@ pub fn walk(job: &FolderJob, skip_roots: &HashSet<PathBuf>, opts: ExcludeOptions
                 slot.1 += size;
                 continue;
             }
+            let rel_str = child_rel.join("/");
+            if let Some(f) = &job.filter {
+                if (is_dir && f.skip_dir(&rel_str)) || (!is_dir && f.skip_file(&rel_str)) {
+                    continue;
+                }
+            }
             if is_dir {
                 if !skip_roots.contains(&path) {
                     subdirs.push((path, child_rel));
@@ -205,6 +237,33 @@ pub fn walk(job: &FolderJob, skip_roots: &HashSet<PathBuf>, opts: ExcludeOptions
         stack.extend(subdirs.into_iter().rev());
     }
     out
+}
+
+/// A pack path that is a single file (e.g. `.gitconfig`): `dest_root` is the
+/// destination file itself.
+fn walk_single_file(
+    job: &FolderJob,
+    meta: &std::fs::Metadata,
+    opts: ExcludeOptions,
+    out: &mut WalkResult,
+) {
+    if let Some(p) = &job.profile_rel {
+        if let Some(cat) = classify(p, false, true, opts) {
+            let slot = out.excluded.entry(cat).or_default();
+            slot.0 += 1;
+            slot.1 += meta.len();
+            return;
+        }
+    }
+    out.files.push(PlannedFile {
+        src: job.src_root.clone(),
+        src_win: job.win_root.clone(),
+        dest: job.dest_root.clone(),
+        size: meta.len(),
+        mtime: meta.modified().ok(),
+        priority: job.priority,
+        attributes: attributes(meta),
+    });
 }
 
 /// Components of `path` relative to `base`, if it is inside it.

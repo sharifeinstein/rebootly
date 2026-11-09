@@ -38,6 +38,13 @@ fn software() -> HiveWriter {
     w.key(r"Microsoft\Windows\CurrentVersion")
         .sz("ProgramFilesDir", r"C:\Program Files")
         .sz("ProgramFilesDir (x86)", r"C:\Program Files (x86)");
+    w.key(r"Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome")
+        .sz("DisplayName", "Google Chrome")
+        .sz("DisplayVersion", "142.0.7444.60")
+        .sz("Publisher", "Google LLC");
+    w.key(r"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++")
+        .sz("DisplayName", "Notepad++ (32-bit x86)")
+        .sz("DisplayVersion", "8.8");
     w.key(PROFILE_LIST)
         .expand_sz("ProfilesDirectory", r"%SystemDrive%\Users")
         .expand_sz("Public", r"%SystemDrive%\Users\Public")
@@ -88,6 +95,12 @@ fn alice() -> HiveWriter {
             r"%USERPROFILE%\Downloads",
         )
         .expand_sz("AppData", r"%USERPROFILE%\AppData\Roaming");
+    w.key(r"Control Panel\Desktop")
+        .sz("WallPaper", r"C:\Users\Alice\Pictures\beach.jpg")
+        .sz("WheelScrollLines", "3");
+    w.key(r"Control Panel\Mouse").sz("MouseSensitivity", "10");
+    w.key(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")
+        .dword("HideFileExt", 0);
     w
 }
 
@@ -122,6 +135,8 @@ fn carol() -> HiveWriter {
 /// - dave: dirty hive (pending `.LOG1` entry)
 /// - erin: profile folder without NTUSER.DAT
 /// - system SIDs and a `.bak` duplicate, all skipped
+/// - app data for packs (alice: VS Code, Chrome, dotfiles, SSH key; bob:
+///   PowerShell profile in OneDrive Documents), `C:\Projects` at the root
 pub fn build_win11_basic(root: &Path) -> io::Result<()> {
     let cfg = "Windows/System32/config";
     put(root, &format!("{cfg}/SOFTWARE"), &software().to_bytes())?;
@@ -138,7 +153,30 @@ pub fn build_win11_basic(root: &Path) -> io::Result<()> {
         note(root, &format!("Users/alice/{f}"))?;
     }
 
+    // App data for packs (alice): VS Code, Chrome, dotfiles, an SSH key.
+    for f in [
+        "AppData/Roaming/Code/User/settings.json",
+        "AppData/Roaming/Code/User/keybindings.json",
+        "AppData/Roaming/Code/User/snippets/python.json",
+        "AppData/Roaming/Code/User/workspaceStorage/abc/state.vscdb",
+        ".vscode/extensions/ms-python.python-2026.1.0/package.json",
+        ".vscode/extensions/rust-lang.rust-analyzer-0.3.2600/package.json",
+        ".gitconfig",
+        ".ssh/id_ed25519",
+        "AppData/Local/Google/Chrome/User Data/Local State",
+        "AppData/Local/Google/Chrome/User Data/Default/Bookmarks",
+        "AppData/Local/Google/Chrome/User Data/Default/Login Data",
+        "AppData/Local/Google/Chrome/User Data/Default/Cache/data_0",
+        "AppData/Local/Google/Chrome/User Data/Crashpad/report.dmp",
+    ] {
+        note(root, &format!("Users/alice/{f}"))?;
+    }
+
     put(root, "Users/bob/NTUSER.DAT", &bob().to_bytes())?;
+    note(
+        root,
+        "Users/bob/OneDrive/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+    )?;
     for f in [
         "OneDrive/Desktop/a.txt",
         "OneDrive/Documents/b.txt",
@@ -162,5 +200,7 @@ pub fn build_win11_basic(root: &Path) -> io::Result<()> {
 
     note(root, "Users/erin/Desktop/e.txt")?;
     note(root, "Users/Public/Documents/shared.txt")?;
+    note(root, "Projects/rebootly/README.md")?;
+    std::fs::create_dir_all(root.join("PerfLogs"))?;
     Ok(())
 }

@@ -9,6 +9,7 @@ fn job(root: &Path, profile_rel: Option<Vec<String>>) -> FolderJob {
         profile_rel,
         dest_root: "users/u/folders/Documents".into(),
         priority: 1,
+        filter: None,
     }
 }
 
@@ -113,4 +114,33 @@ fn unreadable_root_is_an_issue_not_a_panic() {
     );
     assert!(w.files.is_empty());
     assert_eq!(w.issues[0].kind, IssueKind::Unreadable);
+}
+
+#[test]
+fn pack_filters_and_single_file_roots() {
+    let t = tempfile::tempdir().unwrap();
+    let r = t.path();
+    touch(&r.join("settings.json"));
+    touch(&r.join("workspaceStorage/x/state.vscdb"));
+    touch(&r.join("snippets/a.json"));
+    touch(&r.join("snippets/skip/b.json"));
+    let g = |p: &str| Glob::new(p).unwrap();
+    let mut j = job(r, None);
+    j.filter = Some(PathFilter {
+        include: vec![g("settings.json"), g("snippets/**")],
+        exclude: vec![g("snippets/skip")],
+    });
+    let w = walk(&j, &HashSet::new(), ExcludeOptions::default());
+    let rels: Vec<_> = w
+        .files
+        .iter()
+        .map(|f| f.dest.rsplit("Documents/").next().unwrap())
+        .collect();
+    assert_eq!(rels, ["settings.json", "snippets/a.json"]);
+
+    let mut one = job(&r.join("settings.json"), None);
+    one.dest_root = "users/u/packs/x/settings.json".into();
+    let w = walk(&one, &HashSet::new(), ExcludeOptions::default());
+    assert_eq!(w.files.len(), 1);
+    assert_eq!(w.files[0].dest, "users/u/packs/x/settings.json");
 }

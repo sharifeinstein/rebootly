@@ -1,0 +1,31 @@
+schema: 1
+id: dev-dotfiles
+name: Git, SSH and developer config folders
+version: 1
+detect:
+  any:
+    - path: "%USERPROFILE%\\.gitconfig"
+    - path: "%USERPROFILE%\\.ssh"
+    - path: "%USERPROFILE%\\.config"
+    - path: "%USERPROFILE%\\.aws"
+    - path: "%USERPROFILE%\\.kube"
+paths:
+  - src: "%USERPROFILE%\\.gitconfig"
+    rewrite: true
+  - src: "%USERPROFILE%\\.gitignore_global"
+  - src: "%USERPROFILE%\\.config"
+    rewrite: true
+  # Keys and credentials: encrypted sensitive bundle only (SPEC 6, 9).
+  - src: "%USERPROFILE%\\.ssh"
+    sensitive: true
+  - src: "%USERPROFILE%\\.aws"
+    sensitive: true
+  - src: "%USERPROFILE%\\.azure"
+    sensitive: true
+  - src: "%USERPROFILE%\\.kube"
+    sensitive: true
+  - src: "%USERPROFILE%\\.docker"
+    include: ["config.json"]
+    sensitive: true
+  - src: "%USERPROFILE%\\.npmrc"
+    sensitive: true

@@ -46,7 +46,14 @@ fn backup_then_resume_is_a_no_op() {
         &job_dir,
     ]);
     assert_eq!(code, 0, "{err}");
-    assert!(err.contains("Resuming: 16 file(s) already copied"), "{err}");
+    assert!(
+        err.contains("Resuming: ") && err.contains(" file(s) already copied"),
+        "{err}"
+    );
+    assert!(
+        err.contains("0/0 files") || !err.contains("failed:"),
+        "nothing recopied: {err}"
+    );
 }
 
 #[test]

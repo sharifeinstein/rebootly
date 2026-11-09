@@ -4,7 +4,9 @@
 //! job folder on the target.
 
 pub mod copy;
+pub mod custom;
 pub mod exclude;
+pub mod extras;
 pub mod manifest;
 pub mod plan;
 pub mod preflight;

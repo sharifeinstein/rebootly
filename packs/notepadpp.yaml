@@ -1,0 +1,23 @@
+schema: 1
+id: notepadpp
+name: Notepad++
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\Notepad++\\config.xml"
+    - uninstall_name: "Notepad++*"
+winget_id: Notepad++.Notepad++
+paths:
+  - src: "%APPDATA%\\Notepad++"
+    include:
+      - "config.xml"
+      - "shortcuts.xml"
+      - "langs.xml"
+      - "stylers.xml"
+      - "contextMenu.xml"
+      - "session.xml"
+      - "themes/**"
+      - "userDefineLangs/**"
+      - "plugins/config/**"
+    rewrite: true
+requires_closed: ["notepad++.exe"]

@@ -30,6 +30,25 @@ pub struct BackupArgs {
     /// Also skip node_modules and .git/objects.
     #[arg(long)]
     pub skip_dev_artifacts: bool,
+    /// Folder with extra or updated pack YAML files (default: `packs/` beside
+    /// the binary). Built-in packs are always available.
+    #[arg(long, value_name = "DIR")]
+    pub packs_dir: Option<PathBuf>,
+    /// Only these packs (by id). Repeatable.
+    #[arg(long = "pack", value_name = "ID", conflicts_with = "no_packs")]
+    pub pack_ids: Vec<String>,
+    /// Don't back up app settings (packs).
+    #[arg(long)]
+    pub no_packs: bool,
+    /// Include C:\Users\Public.
+    #[arg(long)]
+    pub public: bool,
+    /// Include a folder at the drive root, e.g. `--root-folder Projects`.
+    #[arg(long = "root-folder", value_name = "NAME")]
+    pub root_folders: Vec<String>,
+    /// Extra folder by Windows path: `--custom "Label=C:\Data"`. Repeatable.
+    #[arg(long = "custom", value_name = "LABEL=PATH", value_parser = parse_custom)]
+    pub custom: Vec<(String, String)>,
     /// Parallel copy workers.
     #[arg(long, default_value_t = 4)]
     pub jobs: usize,
@@ -77,14 +96,24 @@ fn print_preflight(p: &Preflight) {
 /// Returns the process exit code: 0 all copied, 2 finished with failures.
 pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
     let src = OfflineVolume::open(&a.windows_root)?;
+    let packs = if a.no_packs {
+        Vec::new()
+    } else {
+        crate::pack::load(a.packs_dir.as_deref(), &a.pack_ids)?
+    };
     let opts = PlanOptions {
         users: a.users,
         folders: a.folders,
         exclude: ExcludeOptions {
             dev_artifacts: a.skip_dev_artifacts,
         },
+        packs,
+        public: a.public,
+        root_folders: a.root_folders,
+        custom: a.custom,
     };
     let plan = backup::plan(&src, &opts)?;
+    print_detected(&plan);
     if plan.users.is_empty() {
         bail!("no matching users to back up");
     }
@@ -171,6 +200,39 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         );
     }
     Ok(if failed > 0 { 2 } else { 0 })
+}
+
+fn print_detected(plan: &backup::Plan) {
+    let mut by_user: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
+    for p in &plan.packs {
+        by_user.entry(&p.user).or_default().push(&p.id);
+    }
+    if !by_user.is_empty() {
+        eprintln!("App packs:");
+        for (u, ids) in by_user {
+            eprintln!("  {u:<20} {}", ids.join(", "));
+        }
+    }
+    let unused: Vec<&str> = plan
+        .offered_root_folders
+        .iter()
+        .filter(|n| !plan.custom.iter().any(|c| c.label.eq_ignore_ascii_case(n)))
+        .map(String::as_str)
+        .collect();
+    if !unused.is_empty() {
+        eprintln!(
+            "Folders at the drive root (add with --root-folder NAME): {}",
+            unused.join(", ")
+        );
+    }
+}
+
+fn parse_custom(s: &str) -> Result<(String, String), String> {
+    let (label, path) = s.split_once('=').ok_or("expected LABEL=PATH")?;
+    if label.trim().is_empty() || path.trim().is_empty() {
+        return Err("expected LABEL=PATH".into());
+    }
+    Ok((label.trim().to_owned(), path.trim().to_owned()))
 }
 
 fn nearest_existing(p: &Path) -> PathBuf {

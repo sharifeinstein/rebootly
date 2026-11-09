@@ -18,16 +18,16 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M2 — done; M3 not started
-Last session: 2026-11-09 — M2 copy engine and `rebootly backup` (Tier 1 + raw hives, resume, pre-flight)
+Current milestone: M3 — done; M4 not started
+Last session: 2026-11-09 — M3 packs: schema/loader/detection, 9 built-in packs, .reg export, custom/Public/root folders
 
 ## Next step
-Start M3 (packs, SPEC §6 and §4 Tier 2/3). First task: `crates/rebootly-core/src/packs/schema.rs`, serde structs for the YAML pack format from SPEC §6, with validation and tests, plus a loader for `packs/*.yaml`. Then detection against a `Source`, and copying pack paths through the existing engine: add `FolderJob`s with `dest_root = users/<u>/packs/<id>`, priority 13–19 (between Pictures and Favorites). The AppData exclusions in `backup/exclude.rs` already apply when `profile_rel` is set.
+Start M4 (live Windows, SPEC §3.5 live bits, §4 Tier 4, §9). It needs a Windows machine to test, since this workspace can't even compile `cfg(windows)` code. First task: in `rebootly-win`, a `LiveWindows` implementing `rebootly_core::Source` (reuse the core hive parser on `C:\Windows\System32\config\SOFTWARE` read with backup semantics, plus a `SHGetKnownFolderPath` cross-check), behind `cfg(windows)`, with a `--live` switch in the CLI. Then the sensitive bundle (age or AES-256-GCM + Argon2id), which unblocks `sensitive: true` pack paths. VSS, SeBackupPrivilege, OneDrive placeholders, winget/netsh/printers/tasks capture and sleep prevention come after.
 
 ## Milestones
 - [x] M1 Core resolver
 - [x] M2 Copy engine
-- [ ] M3 Packs
+- [x] M3 Packs
 - [ ] M4 Live Windows
 - [ ] M5 Restore
 - [ ] M6 TUI
@@ -53,13 +53,24 @@ Start M3 (packs, SPEC §6 and §4 Tier 2/3). First task: `crates/rebootly-core/s
 - 2026-11-09: The CLI exits 0 when everything was copied, 2 when it finished with failed files, and 1 on error. Ctrl-C has no handler: the per-file `job.state` already makes `--resume` work. Pause/resume controls come with the TUI (M6).
 - 2026-11-09: Never-copy list extended to Firefox credential/cookie stores and the DPAPI `Protect` folder (SPEC §3.6 updated).
 
+- 2026-11-09: YAML via `serde_norway` (maintained serde_yaml fork, MIT/Apache, MSRV 1.71). Detect conditions are parsed as one-key maps, so packs keep the SPEC's `- path: ...` syntax (serde_norway alone would need `!path` tags).
+- 2026-11-09: Packs are compiled into the binary (`include_str!`) and overridden by id from `packs/` beside the binary or `--packs-dir`. Bad pack files are warnings, not fatal; `rebootly pack validate` checks files before import.
+- 2026-11-09: `%KF:<Folder>%` template variables point at resolved known folders, so packs follow redirection (OneDrive KFM).
+- 2026-11-09: A pack root nested in a planned folder is copied once, by the pack, if the pack has no include/exclude filter. Filtered pack roots are also walked by the parent folder (copied twice rather than risk losing files).
+- 2026-11-09: A pack detected only by a machine-wide Uninstall entry, with no files or registry for that user, is dropped for that user.
+- 2026-11-09: Until the encrypted sensitive bundle exists (M4), `sensitive: true` paths are not copied; they're listed as `sensitive_not_copied` plus a manual step. Plain copies of keys are never made.
+- 2026-11-09: Tier 3 (HKCU allowlist) and the Tier 2 shell folders are implemented as the built-in `windows-shell` pack (detect: always). Office keys come with an Office pack later.
+- 2026-11-09: `rebootly backup` grows `--packs-dir`, `--pack ID`, `--no-packs`, `--public`, `--root-folder NAME`, `--custom LABEL=WINPATH`. Non-system drive-root folders are listed ("offered") in the output and manifest but never included automatically.
+
 ## Known issues / TODO
 - Hive log **replay** not implemented: dirty hives are detected (seq mismatch, or pending `HvLE` entries in .LOG1/.LOG2) and flagged; the base hive is read. Legacy (pre-8.1) `DIRT` logs are only flagged when seq numbers mismatch.
 - No **real** Win10/Win11/Entra ID hives in fixtures yet. Need sanitized NTUSER.DAT + SOFTWARE + SYSTEM from test VMs (SPEC §13). Parser paths not yet exercised by fixtures: `lf`/`li`/`ri` subkey lists and `db` big-data values (code exists, unit tests only cover `lh`).
 - `cfg(windows)` code is not compile-checked in the cloud workspace (Windows target can't be installed there); CI (`.github/workflows/ci.yml`) covers it once the repo is on GitHub.
 - Whole hives are read into memory (SOFTWARE can be ~100 MB). Fine for now; consider mmap later.
-- `Source::installed_apps` not on the trait yet (comes with M3/M4).
-- Tier 1 still missing: `Users\Public\*` (ask) and non-system folders at the drive root (e.g. `C:\Projects`). Plan: add both as "custom" FolderJobs in M3, which also adds custom folders.
+- Built-in packs so far: chrome, edge, firefox, vscode, windows-terminal, powershell, dev-dotfiles, notepadpp, windows-shell. The rest of the SPEC §6 v1 list (Brave, Thunderbird, Outlook PST + signatures, Office, JetBrains, Sticky Notes, FileZilla, PuTTY, WinSCP, OBS, Adobe, Steam, Minecraft, My Games, QuickBooks) is M9. Packs have only been checked against synthetic fixtures; verify paths on real Win10/Win11 VMs.
+- Packs can't name HKLM keys. `requires_closed` and `post_restore` are recorded only (used in live mode / restore). `rewrite: true` is metadata for M5.
+- `.reg` export doesn't wrap long hex lines like regedit does; regedit accepts that. Values containing secrets aren't filtered (the allowlist keys hold none).
+- `rebootly inspect` doesn't show packs yet; `backup --preflight` does.
 - Target filesystem type is detected on Linux only (/proc/self/mountinfo). On Windows/WinPE it is unknown, so the FAT32 warning is generic there; rebootly-win should supply it in M4.
 - Large backups: the manifest holds every file in memory and is written as one JSON file (~200 B per file). Fine up to a few hundred thousand files; consider streaming it later.
 - No `report.html` yet (M6), only `report.txt`.
@@ -86,6 +97,12 @@ Start M3 (packs, SPEC §6 and §4 Tier 2/3). First task: `crates/rebootly-core/s
 - `rebootly-core::backup::state` — `job.state` JSONL writer/loader and resume check.
 - `rebootly-core::backup::run` — job folder create/resume, bounded parallel copy, manifest + report.
 - `rebootly-core::backup::{manifest,report,time}` — §10 manifest types, report.txt, RFC 3339 formatting.
+- `rebootly-core::backup::extras` — per-user pack detection and planning (copy, list_only, sensitive, .reg export).
+- `rebootly-core::backup::custom` — custom folders, `Users\Public`, drive-root folder discovery.
+- `rebootly-core::packs::{schema,load,detect,glob}` — pack YAML schema and validation, built-in + folder loading, detection, glob matcher.
+- `rebootly-core::apps` — installed apps from Uninstall keys (machine 64/32-bit, per user).
+- `rebootly-core::regfile` — export HKCU keys to `.reg` (regedit 5.00, UTF-16LE).
+- `packs/*.yaml` — built-in packs (also compiled into the binary).
 - `rebootly-core::fixtures` — synthetic `win11-basic` volume (feature `fixtures`); `examples/gen_fixtures.rs` regenerates it.
-- `rebootly-cli` — `rebootly inspect …` (`render.rs`) and `rebootly backup --windows-root <p> --target <dir> | --resume <job> [--user] [--folder] [--preflight] [--force] [--jobs N]` (`backup.rs`).
+- `rebootly-cli` — `rebootly inspect …` (`render.rs`) and `rebootly backup --windows-root <p> --target <dir> | --resume <job> [--user] [--folder] [--preflight] [--force] [--jobs N]` (`backup.rs`); `rebootly pack list | validate FILE…` (`pack.rs`).
 - `rebootly-win`, `rebootly-linux`, `rebootly-tui` — placeholders for M4, M7, M6.

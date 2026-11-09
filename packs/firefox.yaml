@@ -1,0 +1,23 @@
+schema: 1
+id: firefox
+name: Mozilla Firefox
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\Mozilla\\Firefox\\profiles.ini"
+    - uninstall_name: "Mozilla Firefox*"
+winget_id: Mozilla.Firefox
+paths:
+  # logins.json, key4.db and cookies.sqlite are always excluded (SPEC 3.6).
+  - src: "%APPDATA%\\Mozilla\\Firefox"
+    include: ["profiles.ini", "installs.ini", "Profiles/**"]
+    exclude:
+      - "Profiles/*/crashes"
+      - "Profiles/*/minidumps"
+      - "Profiles/*/datareporting"
+      - "Profiles/*/saved-telemetry-pings"
+      - "Profiles/*/storage/temporary"
+requires_closed: ["firefox.exe"]
+notes: >-
+  Bookmarks, add-ons and settings move. Saved passwords are not copied: use
+  Firefox sync, or export logins to CSV before migrating.

@@ -173,10 +173,19 @@ pub fn run(
         .filter_map(|f| job.previous.entries.get(&f.dest).cloned())
         .collect();
     progress(Event::Start {
-        files: todo.len(),
+        files: todo.len() + plan.generated.len(),
         bytes,
         already_done: files.len(),
     });
+
+    // Generated files (.reg exports) are small: rewrite them on every run.
+    for g in &plan.generated {
+        let e = write_generated(job, g)?;
+        writer.record(&e)?;
+        progress(Event::File(&e));
+        files.retain(|f| f.path != e.path);
+        files.push(e);
+    }
 
     let next = AtomicUsize::new(0);
     let cancel = &*opts.cancel;
@@ -243,7 +252,9 @@ pub fn run(
         complete,
         source: plan.source.clone(),
         users: plan.users.clone(),
-        packs: Vec::new(),
+        packs: plan.packs.clone(),
+        custom: plan.custom.clone(),
+        offered_root_folders: plan.offered_root_folders.clone(),
         files,
         reparse_points: plan.reparse_points.clone(),
         excluded: plan
@@ -267,4 +278,23 @@ pub fn run(
         super::report::text(&manifest).as_bytes(),
     )?;
     Ok(manifest)
+}
+
+fn write_generated(job: &Job, g: &super::extras::GeneratedFile) -> std::io::Result<FileEntry> {
+    use sha2::Digest as _;
+    let path = job.native(&g.dest);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    super::manifest::write_atomic(&path, &g.bytes)?;
+    Ok(FileEntry {
+        path: g.dest.clone(),
+        source: g.source.clone(),
+        size: g.bytes.len() as u64,
+        mtime: None,
+        attributes: None,
+        sha256: Some(super::copy::hex(&sha2::Sha256::digest(&g.bytes))),
+        status: FileStatus::Ok,
+        reason: None,
+    })
 }

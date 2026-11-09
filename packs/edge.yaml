@@ -1,0 +1,27 @@
+schema: 1
+id: edge
+name: Microsoft Edge
+version: 1
+detect:
+  any:
+    - path: "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data"
+    - uninstall_name: "Microsoft Edge"
+winget_id: Microsoft.Edge
+paths:
+  # Caches, Login Data, Cookies and Local State are always excluded (SPEC 3.6).
+  - src: "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data"
+    exclude:
+      - "Crashpad"
+      - "Safe Browsing"
+      - "component_crx_cache"
+      - "extensions_crx_cache"
+      - "OptimizationGuidePredictionModels"
+      - "WidevineCdm"
+      - "SwReporter"
+      - "**/Service Worker"
+requires_closed: ["msedge.exe"]
+os: [win10, win11]
+notes: >-
+  Bookmarks, extensions, settings and history move. Saved passwords and
+  cookies are never copied (they can't be decrypted on another PC): turn on
+  Edge sync, or export passwords to CSV before migrating.

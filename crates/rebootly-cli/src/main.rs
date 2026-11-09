@@ -1,6 +1,7 @@
 //! `rebootly` command-line interface (thin layer over rebootly-core).
 
 mod backup;
+mod pack;
 mod render;
 
 use std::path::PathBuf;
@@ -33,6 +34,9 @@ enum Cmd {
     },
     /// Back up user folders (Tier 1) and raw registry hives.
     Backup(backup::BackupArgs),
+    /// List or validate app packs.
+    #[command(subcommand)]
+    Pack(pack::PackCmd),
 }
 
 fn main() -> ExitCode {
@@ -67,6 +71,7 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
             Ok(0)
         }
         Cmd::Backup(args) => backup::run(args),
+        Cmd::Pack(cmd) => pack::run(cmd),
     }
 }
 

@@ -48,6 +48,15 @@ impl Source for Flaky {
         }
         self.inner.open_read(path)
     }
+    fn user_vars(&self, p: &Profile) -> Result<crate::expand::VarSet, SourceError> {
+        self.inner.user_vars(p)
+    }
+    fn map_path(&self, win: &str) -> crate::winpath::Mapped {
+        self.inner.map_path(win)
+    }
+    fn machine_apps(&self) -> &[crate::apps::InstalledApp] {
+        self.inner.machine_apps()
+    }
     fn open_user_hive(&self, p: &Profile) -> Result<Option<Hive>, SourceError> {
         self.inner.open_user_hive(p)
     }
@@ -242,7 +251,7 @@ fn cancel_then_resume_copies_only_the_rest() {
         }
     })
     .unwrap();
-    assert_eq!(to_copy, p.files.len() - done_first);
+    assert_eq!(to_copy, p.files.len() + p.generated.len() - done_first);
     assert!(m2.complete);
     assert_eq!(m2.counts().0, p.files.len());
 }
@@ -267,3 +276,5 @@ fn folder_filter_limits_plan() {
         Some("not part of this backup")
     );
 }
+
+mod packs;

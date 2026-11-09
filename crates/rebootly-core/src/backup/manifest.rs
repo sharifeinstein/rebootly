@@ -78,6 +78,60 @@ pub struct ExcludedRecord {
     pub bytes: u64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PackPathRecord {
+    /// Template from the pack, e.g. `%APPDATA%\Code\User`.
+    pub template: String,
+    /// Expanded path on the source machine.
+    pub source_path: String,
+    /// Where it is in the backup (`None` if not copied).
+    pub dest: Option<String>,
+    pub mode: crate::packs::schema::Mode,
+    /// Rewrite old profile paths inside these files on restore (M5).
+    pub rewrite: bool,
+    pub status: PackPathStatus,
+    /// For `list_only`: names found in the folder.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub listed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PackPathStatus {
+    Copied,
+    Listed,
+    /// Sensitive: only ever stored in the encrypted bundle (not yet available).
+    SensitiveNotCopied,
+    NotFound,
+    NotOnVolume,
+    Duplicate,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PackRecord {
+    pub id: String,
+    pub name: String,
+    pub version: u32,
+    pub origin: String,
+    pub user: String,
+    pub detected_by: String,
+    pub winget_id: Option<String>,
+    pub requires_closed: Vec<String>,
+    pub notes: Option<String>,
+    pub post_restore: Vec<crate::packs::schema::PostRestore>,
+    pub paths: Vec<PackPathRecord>,
+    /// `.reg` file with the pack's HKCU keys, if any were present.
+    pub registry_file: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CustomRecord {
+    pub label: String,
+    pub source_path: String,
+    pub dest: Option<String>,
+    pub note: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ManualStep {
     pub title: String,
@@ -95,8 +149,12 @@ pub struct Manifest {
     pub complete: bool,
     pub source: SourceInfo,
     pub users: Vec<UserRecord>,
-    /// App packs used (M3).
-    pub packs: Vec<String>,
+    /// App packs used, per user.
+    pub packs: Vec<PackRecord>,
+    /// Custom, Public and drive-root folders.
+    pub custom: Vec<CustomRecord>,
+    /// Non-system folders found at the drive root (offered, not forced).
+    pub offered_root_folders: Vec<String>,
     pub files: Vec<FileEntry>,
     pub reparse_points: Vec<ReparsePoint>,
     pub excluded: Vec<ExcludedRecord>,

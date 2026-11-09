@@ -4,10 +4,13 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use super::custom::plan_custom;
 use super::exclude::{Category, ExcludeOptions};
-use super::manifest::{FolderRecord, ManualStep, SourceInfo, UserRecord};
+use super::extras::{GeneratedFile, plan_user_packs};
+use super::manifest::{CustomRecord, FolderRecord, ManualStep, PackRecord, SourceInfo, UserRecord};
 use super::walk::{FolderJob, PathIssue, PlannedFile, ReparsePoint, rel_components, walk};
 use crate::hive::dirty;
+use crate::packs::schema::CompiledPack;
 use crate::source::{Profile, Source, SourceError};
 use crate::winpath::{Mapped, resolve_ci};
 
@@ -28,6 +31,10 @@ pub const TIER1: &[(&str, u32)] = &[
     ("Downloads", 40),
 ];
 pub const HIVES_PRIORITY: u32 = 0;
+/// App packs: after Pictures, before the small Tier 1 folders.
+pub const PACK_PRIORITY: u32 = 15;
+pub const PUBLIC_PRIORITY: u32 = 45;
+pub const CUSTOM_PRIORITY: u32 = 50;
 pub const HIVES_LABEL: &str = "Registry hives (raw)";
 
 #[derive(Debug, Clone, Default)]
@@ -37,6 +44,14 @@ pub struct PlanOptions {
     /// Tier 1 folder names; empty = all of them.
     pub folders: Vec<String>,
     pub exclude: ExcludeOptions,
+    /// Packs to detect (empty = none).
+    pub packs: Vec<CompiledPack>,
+    /// Include `Users\Public`.
+    pub public: bool,
+    /// Drive-root folder names to include (e.g. `Projects`).
+    pub root_folders: Vec<String>,
+    /// (label, Windows path) custom folders.
+    pub custom: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -53,6 +68,11 @@ pub struct Plan {
     pub warnings: Vec<String>,
     /// priority → label, for per-folder sizes.
     pub labels: BTreeMap<u32, String>,
+    pub packs: Vec<PackRecord>,
+    pub custom: Vec<CustomRecord>,
+    pub offered_root_folders: Vec<String>,
+    /// Files Rebootly generates (e.g. `.reg` exports).
+    pub generated: Vec<GeneratedFile>,
 }
 
 fn wanted(list: &[String], candidates: &[&str]) -> bool {
@@ -89,6 +109,9 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
         ..Plan::default()
     };
     plan.labels.insert(HIVES_PRIORITY, HIVES_LABEL.into());
+    plan.labels.insert(PACK_PRIORITY, "App packs".into());
+    plan.labels.insert(PUBLIC_PRIORITY, "Public".into());
+    plan.labels.insert(CUSTOM_PRIORITY, "Custom folders".into());
     for (name, prio) in TIER1 {
         plan.labels.insert(*prio, (*name).into());
     }
@@ -126,7 +149,8 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
         };
         add_hives(&mut plan, &profile, profile_dir, &uname);
 
-        for f in src.resolve_folders(&profile)? {
+        let resolved = src.resolve_folders(&profile)?;
+        for f in &resolved {
             let prio = TIER1
                 .iter()
                 .find(|(n, _)| *n == f.path.name)
@@ -158,6 +182,7 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
                             profile_rel: rel_components(path, profile_dir),
                             dest_root: format!("users/{uname}/folders/{}", f.path.name),
                             priority: prio,
+                            filter: None,
                         });
                     }
                 }
@@ -187,9 +212,27 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
             record.folders.insert(f.path.name.into(), rec);
         }
         plan.users.push(record);
+        plan_user_packs(
+            src,
+            &profile,
+            &uname,
+            profile_dir,
+            &resolved,
+            opts,
+            &mut plan,
+            &mut jobs,
+            &mut seen_roots,
+        )?;
     }
+    plan_custom(src, opts, &mut plan, &mut jobs, &mut seen_roots);
 
-    let skip: HashSet<PathBuf> = jobs.iter().map(|j| j.src_root.clone()).collect();
+    // Nested planned roots are copied once, by their own job. Filtered (pack)
+    // jobs copy only part of their root, so the parent still walks into them.
+    let skip: HashSet<PathBuf> = jobs
+        .iter()
+        .filter(|j| j.filter.is_none())
+        .map(|j| j.src_root.clone())
+        .collect();
     for job in &jobs {
         let w = walk(job, &skip, opts.exclude);
         plan.files.extend(w.files);
