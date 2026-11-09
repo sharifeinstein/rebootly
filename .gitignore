@@ -3,3 +3,5 @@
 # Loose copies at the repo root from project kickoff; docs/SPEC.md is canonical.
 /SPEC.md
 /KICKOFF_PROMPT.md
+# Sync bundle used to mirror the tree from the Claude workspace.
+/.migrate-sync.tar
