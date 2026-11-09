@@ -12,10 +12,10 @@
 - No secrets in logs, ever. Never decrypt DPAPI data or read browser password/cookie stores.
 
 ## Repo / environment
-- Canonical tree: `D:\Projects\Migrateit` on the user's PC (repo root, with `.git`). GitHub: `sharifeinstein/rebootly` once the user creates it (the Claude session can't create repos).
+- Canonical tree: `D:\Projects\rebootly` on the user's PC (repo root, with `.git`). GitHub: `sharifeinstein/rebootly` once the user creates it (the Claude session can't create repos).
 - Builds run in the Claude cloud workspace (Rust 1.97, crates.io reachable); the tree is mirrored to D: after each milestone. The VM behind the linked folder has git but no Rust.
-- Sync to D: (until GitHub is set up): `git gc -q && tar --exclude=./target --exclude=./.git/objects/info/commit-graph --mode=u+w -cf /mnt/user-data/outputs/rebootly-sync-<sha>.tar .`, device_commit_files it to `D:\Projects\Migrateit\.rebootly-sync.tar` (use a new staged file name each time, or a stale copy is sent), then on the device `tar --overwrite -xf .rebootly-sync.tar`. Files that arrive read-only on Windows can't be overwritten from the VM; the user clears them with `attrib -r /s`.
-- To resume in a new chat: copy `D:\Projects\Migrateit` into the workspace (or clone from GitHub once it exists), then `cargo test`.
+- Sync to D: (until GitHub is set up): `git gc -q && tar --exclude=./target --exclude=./.git/objects/info/commit-graph --mode=u+w -cf /mnt/user-data/outputs/rebootly-sync-<sha>.tar .`, device_commit_files it to `D:\Projects\rebootly\.rebootly-sync.tar` (use a new staged file name each time, or a stale copy is sent), then on the device `tar --overwrite -xf .rebootly-sync.tar`. Always keep `--mode=u+w`: a file that arrives read-only on Windows can't be overwritten from the VM (the user would have to run `attrib -r /s`).
+- To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
 Current milestone: M1 — done; M2 not started
@@ -44,7 +44,7 @@ Start M2 (copy engine, SPEC §3.5, §3.6, §10, §13). First task: add `crates/r
 - 2026-11-09: Offline, only the system drive letter (from `SystemRoot`) is mapped to the volume; paths on other letters are reported as "on drive X:, not mounted". Mapping other volumes via `MountedDevices` belongs to M7.
 - 2026-11-09: WinPE detection in core shells out to `reg query …\MiniNT` (no Win32 deps in core); rebootly-win may replace it.
 
-- 2026-11-09: Project named **Rebootly** (was working name `migrate`, taken on crates.io). Crates `rebootly-*`, binary `rebootly`, markers `.rebootly-root` / `.rebootly-undo`. SPEC updated. The local folder is still `D:\Projects\Migrateit`.
+- 2026-11-09: Project named **Rebootly** (was working name `migrate`, taken on crates.io). Crates `rebootly-*`, binary `rebootly`, markers `.rebootly-root` / `.rebootly-undo`. SPEC updated. Project moved to `D:\Projects\rebootly` the same day.
 
 ## Known issues / TODO
 - Hive log **replay** not implemented: dirty hives are detected (seq mismatch, or pending `HvLE` entries in .LOG1/.LOG2) and flagged; the base hive is read. Legacy (pre-8.1) `DIRT` logs are only flagged when seq numbers mismatch.
@@ -54,7 +54,6 @@ Start M2 (copy engine, SPEC §3.5, §3.6, §10, §13). First task: add `crates/r
 - `Source::installed_apps` not on the trait yet (comes with M3/M4).
 - Tier 1 items not resolved yet: `Users\Public\*` contents and non-system drive-root folders (e.g. `C:\Projects`) — M2 pre-flight.
 - `cargo-deny` config not added yet (M9, or earlier once there are more deps).
-- Root `SPEC.md` and `KICKOFF_PROMPT.md` in D:\Projects\Migrateit are git-ignored kickoff copies; `docs/SPEC.md` is canonical. Delete them when convenient.
 
 ## Crate map (one line per module: what it does)
 - `rebootly-core::hive` — read-only regf parser: keys, values, case-insensitive lookup, bounds-checked (`mod.rs`, `cell.rs`, `value.rs`).
