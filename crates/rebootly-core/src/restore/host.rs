@@ -20,6 +20,8 @@ pub enum SysOp {
     WifiDelete(String),
     /// GUID of the active power scheme.
     PowerActive,
+    /// A power scheme with this GUID is installed.
+    PowerExists(String),
     /// `powercfg /import`; returns the new scheme's GUID.
     PowerImport(PathBuf),
     PowerSetActive(String),
@@ -58,6 +60,7 @@ impl SysOp {
             SysOp::WifiAdd(p) => format!("netsh wlan add profile {}", f(p)),
             SysOp::WifiDelete(n) => format!("netsh wlan delete profile {n}"),
             SysOp::PowerActive => "powercfg /getactivescheme".into(),
+            SysOp::PowerExists(g) => format!("powercfg /query {g}"),
             SysOp::PowerImport(p) => format!("powercfg /import {}", f(p)),
             SysOp::PowerSetActive(g) => format!("powercfg /setactive {g}"),
             SysOp::PowerDelete(g) => format!("powercfg /delete {g}"),

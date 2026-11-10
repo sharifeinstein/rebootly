@@ -25,6 +25,7 @@ Current milestone: M5 — Restore (implemented 2026-11-10; waiting for the Windo
 Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` (plan → apps → files → packs → registry → system → Explorer → verify → manual steps), conflict policies, dry run, undo journal + `rebootly undo`, `--simulate-root` for previews/tests off Windows. 119 tests pass; clippy clean on Linux and (cloud type-check) for `x86_64-pc-windows-msvc`. The Windows side (`rebootly-win::live::restore`: `live_target`, `WinRestoreHost`) has only been type-checked, never run.
 
 ## Next step
+0. Backups made before 2026-11-10 13:xx with edge/chrome v1 contain Edge/Chrome junk and the `Cookies-journal`/`Login Data-journal` sidecars: make a fresh backup on the VM with the new exe before testing the restore.
 1. Test restore on the user's Windows 10 VM (VM `DESKTOP-D3P1F40`, user `Picard`, backup at `E:\rb\DESKTOP-D3P1F40_20261110-131615`, passphrase file `C:\rebootly\pp.txt`). Build on the PC (`cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`), copy `target\release\rebootly.exe` to the VM, elevated PowerShell:
    - `rebootly restore E:\rb\DESKTOP-D3P1F40_20261110-131615 --dry-run --sensitive --passphrase-file C:\rebootly\pp.txt` (paste the plan and the conflict decisions)
    - best on a second, fresh local user that is an administrator (e.g. `Riker`; sign in as Riker so HKCU and the profile are his): `rebootly restore <backup> --user Picard --sensitive --passphrase-file C:\rebootly\pp.txt` → check Desktop/Documents, VS Code/Git settings with rewritten paths, wallpaper/mouse (registry), the test certificate in `certmgr.msc`, power plan, hosts, `report.txt` in `%USERPROFILE%\.rebootly-undo\…`
@@ -99,6 +100,9 @@ Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` 
 - 2026-11-10: `--simulate-root DIR` (`Target::simulated`, `SimHost`): files are restored under `DIR/C/…` and system steps only listed. Used by the CLI tests and for previews off Windows; not the "offline file-only restore" of SPEC §5 (still later).
 - 2026-11-10: A `desktop.ini` already at the destination is kept (Windows writes its own); restored ones get hidden+system. Only hidden/system attributes are restored (read-only would block a later restore or undo).
 - 2026-11-10: VS Code extension folder names (`publisher.name-1.2.3`) lose the version in the `post_restore` checklist. `post_restore` commands are listed as manual steps, not run.
+
+- 2026-11-10 (first VM dry run): chrome and edge packs v2 are allowlists (`include:` per profile: Bookmarks, Preferences, History, Favicons, Top Sites, Shortcuts, Web Data, Custom Dictionary, extensions and their settings; Edge also Collections). v1 copied nearly all of `User Data`: LOCK/LOG files, metrics, SmartScreen/CRL caches, components and SQLite journals out of step with their databases. Secret files' SQLite sidecars (`Cookies-journal`, `Login Data-journal`, `-wal`, `-shm`) are now Secrets too; v1 backups contain them.
+- 2026-11-10: Power plan restore: when a scheme with the backup's active GUID already exists (built-in plans share GUIDs), it is only made active; otherwise imported. Undo entry `Power.imported` is optional.
 
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).

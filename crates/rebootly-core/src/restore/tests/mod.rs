@@ -80,6 +80,13 @@ impl RestoreHost for TestHost {
             }
             SysOp::WifiExists(_) | SysOp::CertExists(_) | SysOp::TaskExists(_) => SysOk::No,
             SysOp::PowerActive => SysOk::Value("old-guid".into()),
+            SysOp::PowerExists(g) => {
+                if g == "381b4222-f694-41f0-9685-ff5bb260df2e" {
+                    SysOk::Yes
+                } else {
+                    SysOk::No
+                }
+            }
             SysOp::PowerImport(_) => SysOk::Value("new-guid".into()),
             _ => SysOk::Done,
         })
@@ -329,4 +336,68 @@ fn extension_folder_names_lose_their_version() {
         "rust-lang.rust-analyzer"
     );
     assert_eq!(strip_version("plain"), "plain");
+}
+
+/// Add a plain file to a finished backup (and its manifest).
+pub(super) fn add_to_backup(dir: &Path, rel: &str, body: &[u8]) {
+    let p = dir.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, body).unwrap();
+    let mpath = dir.join("manifest.json");
+    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&mpath).unwrap()).unwrap();
+    m["files"].as_array_mut().unwrap().push(serde_json::json!({
+        "path": rel, "source": "test", "size": body.len(), "mtime": null,
+        "sha256": crate::backup::copy::hex(&sha2::Digest::finalize(<sha2::Sha256 as sha2::Digest>::new_with_prefix(body))),
+        "status": "ok"
+    }));
+    std::fs::write(&mpath, serde_json::to_vec(&m).unwrap()).unwrap();
+}
+
+#[test]
+fn power_plan_existing_is_activated_custom_is_imported() {
+    use super::system::{find_guid, scheme_name};
+    let txt = "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)";
+    assert_eq!(find_guid(txt), Some("381b4222-f694-41f0-9685-ff5bb260df2e"));
+    assert_eq!(scheme_name(txt).as_deref(), Some("Balanced"));
+    assert_eq!(scheme_name("GUID: x"), None);
+
+    for (guid, imports) in [
+        ("381b4222-f694-41f0-9685-ff5bb260df2e", false),
+        ("11111111-2222-3333-4444-555555555555", true),
+    ] {
+        let t = tempfile::tempdir().unwrap();
+        let dir = make_backup(t.path());
+        add_to_backup(&dir, "system/power/active-scheme.pow", b"pow");
+        add_to_backup(
+            &dir,
+            "system/power/active-scheme.txt",
+            format!("Power Scheme GUID: {guid}  (Mine)").as_bytes(),
+        );
+        let b = Backup::open(&dir).unwrap();
+        let target = new_pc(t.path());
+        let p = plan_for(&b, &target, &opts(), None);
+        let host = TestHost::default();
+        let r = execute(&p, &host, &mut Ui::default(), false);
+        assert_eq!(r.failed(), 0, "{}", report::result_text(&p, &r));
+        let ops = host.ops.borrow();
+        assert_eq!(
+            ops.iter().any(|o| matches!(o, SysOp::PowerImport(_))),
+            imports,
+            "{guid}"
+        );
+        let activated = if imports { "new-guid" } else { guid };
+        assert!(
+            ops.contains(&SysOp::PowerSetActive(activated.into())),
+            "{ops:?}"
+        );
+        drop(ops);
+        let host = TestHost::default();
+        super::undo::undo(r.undo_dir.as_ref().unwrap(), &target, &host, false, false).unwrap();
+        let ops = host.ops.borrow();
+        assert!(ops.contains(&SysOp::PowerSetActive("old-guid".into())));
+        assert_eq!(
+            ops.iter().any(|o| matches!(o, SysOp::PowerDelete(_))),
+            imports
+        );
+    }
 }

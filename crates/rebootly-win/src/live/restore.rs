@@ -160,6 +160,9 @@ impl RestoreHost for WinRestoreHost {
             SysOp::PowerActive => {
                 guid_of(run_cmd(Command::new("powercfg").arg("/getactivescheme")))
             }
+            SysOp::PowerExists(g) => Ok(yes_no(run_cmd(
+                Command::new("powercfg").args(["/query", g]),
+            ))),
             SysOp::PowerImport(f) => {
                 guid_of(run_cmd(Command::new("powercfg").arg("/import").arg(f)))
             }

@@ -48,7 +48,8 @@ pub enum UndoEntry {
         saved: Option<String>,
     },
     Power {
-        imported: String,
+        /// `None` when an existing plan was only made active.
+        imported: Option<String>,
         previous: Option<String>,
     },
     Wifi {
@@ -270,10 +271,12 @@ pub fn undo(
                         format!("make power plan {p} active again"),
                     );
                 }
-                sys(
-                    SysOp::PowerDelete(imported.clone()),
-                    format!("delete imported power plan {imported}"),
-                );
+                if let Some(g) = imported {
+                    sys(
+                        SysOp::PowerDelete(g.clone()),
+                        format!("delete imported power plan {g}"),
+                    );
+                }
             }
             UndoEntry::Wifi { name } => sys(
                 SysOp::WifiDelete(name.clone()),

@@ -19,6 +19,9 @@ pub enum SysAction {
     },
     Power {
         file: PathBuf,
+        /// The old PC's active scheme (from `active-scheme.txt`), if known.
+        guid: Option<String>,
+        name: Option<String>,
     },
     Cert {
         file: PathBuf,
@@ -38,7 +41,10 @@ impl SysAction {
                 "install apps with winget import (system/winget.json)".into()
             }
             SysAction::Wifi { name, .. } => format!("add Wi-Fi network {name}"),
-            SysAction::Power { .. } => "import the power plan and make it active".into(),
+            SysAction::Power { name, .. } => match name {
+                Some(n) => format!("power plan {n}: make it the active plan"),
+                None => "power plan: import it and make it active".into(),
+            },
             SysAction::Cert {
                 thumbprint,
                 password,
@@ -156,7 +162,15 @@ pub fn plan_system(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptio
     }
     if opts.system {
         if let Some(file) = has("system/power/active-scheme.pow") {
-            p.actions.push(SysAction::Power { file });
+            let txt = has("system/power/active-scheme.txt")
+                .and_then(|t| std::fs::read(t).ok())
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_default();
+            p.actions.push(SysAction::Power {
+                file,
+                guid: find_guid(&txt).map(str::to_ascii_lowercase),
+                name: scheme_name(&txt),
+            });
         }
     }
     tasks(backup, opts, &mut p);
@@ -209,6 +223,29 @@ fn tasks(backup: &Backup, opts: &RestoreOptions, p: &mut SystemPlan) {
             ),
         ));
     }
+}
+
+/// The first bare GUID in `text` (`powercfg` wording is localized, the GUID isn't).
+pub fn find_guid(text: &str) -> Option<&str> {
+    let b = text.as_bytes();
+    (0..b.len().saturating_sub(35)).find_map(|i| {
+        let c = text.get(i..i + 36)?;
+        let ok = c.bytes().enumerate().all(|(j, x)| {
+            if matches!(j, 8 | 13 | 18 | 23) {
+                x == b'-'
+            } else {
+                x.is_ascii_hexdigit()
+            }
+        });
+        ok.then_some(c)
+    })
+}
+
+/// `… GUID: 381b…  (Balanced)` → `Balanced`.
+pub fn scheme_name(text: &str) -> Option<String> {
+    let t = text.trim();
+    let inner = t.strip_suffix(')')?.rsplit_once('(')?.1.trim();
+    (!inner.is_empty()).then(|| inner.to_owned())
 }
 
 /// `<name>` of a WLAN profile XML.

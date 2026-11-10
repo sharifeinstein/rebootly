@@ -118,6 +118,19 @@ const SECRET_FILES: &[&str] = &[
     "signons.sqlite",
 ];
 
+/// `Cookies-journal` → `Cookies`: SQLite sidecar files hold pieces of their
+/// database, so they share its category.
+fn sqlite_base(name: &str) -> &str {
+    for suffix in ["-journal", "-wal", "-shm"] {
+        if name.len() > suffix.len()
+            && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+        {
+            return &name[..name.len() - suffix.len()];
+        }
+    }
+    name
+}
+
 /// Classify one entry. `comps` is the full relative path *including* the
 /// entry's own name as the last element. `profile_relative` says whether
 /// `comps` starts at the profile root (enables AppData rules).
@@ -191,7 +204,7 @@ pub fn classify(
         {
             return Some(Category::StoreAppTemp);
         }
-    } else if any(name, SECRET_FILES) {
+    } else if any(name, SECRET_FILES) || any(sqlite_base(name), SECRET_FILES) {
         return Some(Category::Secrets);
     }
     None
@@ -239,6 +252,19 @@ mod tests {
             c(&format!(r"{chrome}\Network\Cookies"), false),
             Some(Category::Secrets)
         );
+        for sidecar in [
+            "Cookies-journal",
+            "Login Data-journal",
+            "Login Data For Account-wal",
+            "cookies.sqlite-shm",
+        ] {
+            assert_eq!(
+                c(&format!(r"{chrome}\{sidecar}"), false),
+                Some(Category::Secrets),
+                "{sidecar}"
+            );
+        }
+        assert_eq!(c(&format!(r"{chrome}\History-journal"), false), None);
         assert_eq!(
             c(&format!(r"{chrome}\Service Worker\CacheStorage"), true),
             Some(Category::BrowserCache)

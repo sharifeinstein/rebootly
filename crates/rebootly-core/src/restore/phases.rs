@@ -113,8 +113,8 @@ pub(super) fn system_phase(ex: &mut Exec<'_>) {
                     xml: file.clone(),
                 },
             ),
-            SysAction::Power { file } => {
-                power(ex, &what, file);
+            SysAction::Power { file, guid, .. } => {
+                power(ex, &what, file, guid.as_deref());
                 continue;
             }
             SysAction::Winget { .. } => continue,
@@ -140,44 +140,85 @@ pub(super) fn system_phase(ex: &mut Exec<'_>) {
     }
 }
 
-fn power(ex: &mut Exec<'_>, what: &str, file: &Path) {
+fn power(ex: &mut Exec<'_>, what: &str, file: &Path, guid: Option<&str>) {
+    let active = match ex.query(SysOp::PowerActive) {
+        Some(SysOk::Value(g)) => Some(g.to_ascii_lowercase()),
+        _ => None,
+    };
+    // Built-in plans have the same GUID on every Windows: make the existing
+    // one active rather than importing a copy.
+    let existing = guid.filter(|g| ex.query(SysOp::PowerExists(g.to_string())) == Some(SysOk::Yes));
+    if let Some(g) = existing {
+        if active.as_deref() == Some(g) {
+            ex.push(
+                Phase::System,
+                what,
+                Status::Skipped,
+                "already the active plan",
+            );
+            return;
+        }
+        if ex.dry_run || ex.host.simulated() {
+            ex.sys(Phase::System, what, SysOp::PowerSetActive(g.to_owned()));
+            return;
+        }
+        if journal_power(ex, what, None, active)
+            && ex
+                .sys(Phase::System, what, SysOp::PowerSetActive(g.to_owned()))
+                .is_some()
+        {
+            ex.push(
+                Phase::System,
+                what,
+                Status::Done,
+                format!("active plan is now {g} (it was already on this PC)"),
+            );
+        }
+        return;
+    }
     if ex.dry_run || ex.host.simulated() {
         ex.sys(Phase::System, what, SysOp::PowerImport(file.to_path_buf()));
         return;
     }
-    let previous = match ex.host.sys(&SysOp::PowerActive) {
-        Ok(SysOk::Value(g)) => Some(g),
-        _ => None,
-    };
-    let Some(SysOk::Value(guid)) =
+    let Some(SysOk::Value(new)) =
         ex.sys(Phase::System, what, SysOp::PowerImport(file.to_path_buf()))
     else {
         return;
     };
-    if let Err(e) = ex.journal().and_then(|j| {
-        j.append(&UndoEntry::Power {
-            imported: guid.clone(),
-            previous,
-        })
-    }) {
-        ex.push(
-            Phase::System,
-            what,
-            Status::Failed,
-            format!("undo journal: {e}"),
-        );
-        return;
-    }
-    if ex
-        .sys(Phase::System, what, SysOp::PowerSetActive(guid.clone()))
-        .is_some()
+    if journal_power(ex, what, Some(new.clone()), active)
+        && ex
+            .sys(Phase::System, what, SysOp::PowerSetActive(new.clone()))
+            .is_some()
     {
         ex.push(
             Phase::System,
             what,
             Status::Done,
-            format!("active plan is now {guid}"),
+            format!("imported; active plan is now {new}"),
         );
+    }
+}
+
+fn journal_power(
+    ex: &mut Exec<'_>,
+    what: &str,
+    imported: Option<String>,
+    previous: Option<String>,
+) -> bool {
+    match ex
+        .journal()
+        .and_then(|j| j.append(&UndoEntry::Power { imported, previous }))
+    {
+        Ok(()) => true,
+        Err(e) => {
+            ex.push(
+                Phase::System,
+                what,
+                Status::Failed,
+                format!("undo journal: {e}"),
+            );
+            false
+        }
     }
 }
 

@@ -1,27 +1,35 @@
 schema: 1
 id: edge
 name: Microsoft Edge
-version: 1
+version: 2
 detect:
   any:
     - path: "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data"
     - uninstall_name: "Microsoft Edge"
 winget_id: Microsoft.Edge
 paths:
-  # Caches, Login Data, Cookies and Local State are always excluded (SPEC 3.6).
   - src: "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data"
-    exclude:
-      - "Crashpad"
-      - "Safe Browsing"
-      - "component_crx_cache"
-      - "extensions_crx_cache"
-      - "OptimizationGuidePredictionModels"
-      - "WidevineCdm"
-      - "SwReporter"
-      - "**/Service Worker"
+    # Only what is worth moving, per profile (Default, Profile 1, ...).
+    # Not: caches, LOCK/LOG files, metrics, components, open tabs, Local
+    # State, Login Data and Cookies (SPEC 3.6; they can't be decrypted elsewhere).
+    include:
+      - "*/Bookmarks"
+      - "*/Bookmarks.bak"
+      - "*/Preferences"
+      - "*/Secure Preferences"
+      - "*/History"
+      - "*/Favicons"
+      - "*/Top Sites"
+      - "*/Shortcuts"
+      - "*/Web Data"
+      - "*/Custom Dictionary.txt"
+      - "*/Extensions/**"
+      - "*/Local Extension Settings/**"
+      - "*/Sync Extension Settings/**"
+      - "*/Collections/**"
 requires_closed: ["msedge.exe"]
 os: [win10, win11]
 notes: >-
-  Bookmarks, extensions, settings and history move. Saved passwords and
-  cookies are never copied (they can't be decrypted on another PC): turn on
-  Edge sync, or export passwords to CSV before migrating.
+  Bookmarks, extensions, settings and history move; open tabs don't. Saved
+  passwords and cookies are never copied (they can't be decrypted on another
+  PC): turn on Edge sync, or export passwords to CSV before migrating.
