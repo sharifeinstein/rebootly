@@ -83,6 +83,28 @@ fn restore_preview_run_and_undo_in_a_simulated_pc() {
     let (code, _, err) = rebootly(&["undo", &undo_dir, "--simulate-root", sim_s, "--yes"]);
     assert_eq!(code, 1);
     assert!(err.contains("already undone"), "{err}");
+    let (code, _, err) = rebootly(&[
+        "undo",
+        "--simulate-root",
+        sim_s,
+        "--simulate-user",
+        "sam",
+        "--yes",
+    ]);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("nothing left to undo") && err.contains("already undone"),
+        "{err}"
+    );
+    let (_, list, _) = rebootly(&[
+        "undo",
+        "--list",
+        "--simulate-root",
+        sim_s,
+        "--simulate-user",
+        "sam",
+    ]);
+    assert!(list.contains("[undone "), "{list}");
 }
 
 #[test]

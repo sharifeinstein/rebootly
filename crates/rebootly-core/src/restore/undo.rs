@@ -144,24 +144,49 @@ pub fn read_journal(dir: &Path) -> std::io::Result<Vec<UndoEntry>> {
     Ok(out)
 }
 
-/// Restore runs not undone yet, newest first: (folder, header).
-pub fn list(target: &Target) -> Vec<(PathBuf, UndoEntry)> {
+/// One restore run recorded in the undo folder.
+#[derive(Debug, Clone)]
+pub struct UndoRun {
+    pub dir: PathBuf,
+    pub header: UndoEntry,
+    /// When it was undone (contents of `undone.txt`), if it was.
+    pub undone: Option<String>,
+}
+
+/// Every recorded restore run, newest first.
+pub fn list_all(target: &Target) -> Vec<UndoRun> {
     let root = target.local(&format!(r"{}\{UNDO_DIR}", target.profile));
-    let mut out: Vec<(PathBuf, UndoEntry)> = std::fs::read_dir(&root)
+    let mut out: Vec<UndoRun> = std::fs::read_dir(&root)
         .into_iter()
         .flatten()
         .flatten()
         .filter_map(|e| {
             let dir = e.path();
-            if dir.join(UNDONE).exists() {
+            let header = read_journal(&dir).ok()?.into_iter().next()?;
+            if !matches!(header, UndoEntry::Header { .. }) {
                 return None;
             }
-            let h = read_journal(&dir).ok()?.into_iter().next()?;
-            matches!(h, UndoEntry::Header { .. }).then_some((dir, h))
+            let undone = std::fs::read_to_string(dir.join(UNDONE))
+                .ok()
+                .map(|t| t.trim().to_owned());
+            Some(UndoRun {
+                dir,
+                header,
+                undone,
+            })
         })
         .collect();
-    out.sort_by(|a, b| b.0.cmp(&a.0));
+    out.sort_by(|a, b| b.dir.cmp(&a.dir));
     out
+}
+
+/// Restore runs not undone yet, newest first: (folder, header).
+pub fn list(target: &Target) -> Vec<(PathBuf, UndoEntry)> {
+    list_all(target)
+        .into_iter()
+        .filter(|r| r.undone.is_none())
+        .map(|r| (r.dir, r.header))
+        .collect()
 }
 
 #[derive(Debug, Default)]

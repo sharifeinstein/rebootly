@@ -44,22 +44,26 @@ pub fn run(a: UndoArgs) -> anyhow::Result<u8> {
             .context("give --simulate-user NAME")
     };
     let (target, host) = target(a.simulate_root.as_ref(), name, a.dry_run)?;
-    let runs = undo::list(&target);
+    let all = undo::list_all(&target);
     if a.list {
-        if runs.is_empty() {
-            eprintln!("No restores to undo for {}.", target.username);
+        if all.is_empty() {
+            eprintln!("No restores recorded for {}.", target.username);
         }
-        for (dir, h) in &runs {
+        for r in &all {
             if let UndoEntry::Header {
                 job_id,
                 started,
                 user,
                 ..
-            } = h
+            } = &r.header
             {
+                let state = match &r.undone {
+                    Some(t) => format!("undone {t}"),
+                    None => "can be undone".into(),
+                };
                 println!(
-                    "{}  {started}  backup {job_id} (user {user})",
-                    dir.display()
+                    "{}  {started}  backup {job_id} (user {user})  [{state}]",
+                    r.dir.display()
                 );
             }
         }
@@ -67,10 +71,18 @@ pub fn run(a: UndoArgs) -> anyhow::Result<u8> {
     }
     let dir = match &a.dir {
         Some(d) => d.clone(),
-        None => runs
-            .first()
-            .map(|r| r.0.clone())
-            .context("no restore to undo for this user")?,
+        None => match all.iter().find(|r| r.undone.is_none()) {
+            Some(r) => r.dir.clone(),
+            None => match all.first() {
+                Some(r) => bail!(
+                    "nothing left to undo for {}: the latest restore ({}) was already undone {}",
+                    target.username,
+                    r.dir.display(),
+                    r.undone.as_deref().unwrap_or("")
+                ),
+                None => bail!("no restore recorded for {}", target.username),
+            },
+        },
     };
     if dir.join(UNDONE).exists() && !a.force {
         bail!(
