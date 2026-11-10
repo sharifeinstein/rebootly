@@ -65,6 +65,9 @@ fn decide_and_write(ex: &mut Exec<'_>, f: &FileAction) -> Result<(Status, String
             return Ok((Status::Skipped, "already there".into()));
         }
     }
+    if let Some(why) = super::fit::unfit(f, meta.is_some(), content.is_some(), &ex.plan.user, t) {
+        return Ok((Status::Skipped, why));
+    }
     if meta.is_some() && leaf(&f.dst).eq_ignore_ascii_case("desktop.ini") {
         // Windows writes its own; two of them would only add clutter.
         return Ok((Status::Skipped, "the folder has its own desktop.ini".into()));

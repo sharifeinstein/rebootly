@@ -1,7 +1,7 @@
 schema: 1
 id: edge
 name: Microsoft Edge
-version: 2
+version: 3
 detect:
   any:
     - path: "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data"
@@ -27,9 +27,15 @@ paths:
       - "*/Local Extension Settings/**"
       - "*/Sync Extension Settings/**"
       - "*/Collections/**"
+    # LevelDB lock and log files inside the extension folders.
+    exclude:
+      - "**/LOCK"
+      - "**/LOG"
+      - "**/LOG.old"
 requires_closed: ["msedge.exe"]
 os: [win10, win11]
 notes: >-
-  Bookmarks, extensions, settings and history move; open tabs don't. Saved
+  Bookmarks, extensions, settings and history move; open tabs don't, and on
+  a new PC the browser may reset the start page and search engine. Saved
   passwords and cookies are never copied (they can't be decrypted on another
   PC): turn on Edge sync, or export passwords to CSV before migrating.

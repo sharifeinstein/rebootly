@@ -44,6 +44,16 @@ pub(super) fn make_backup(t: &Path) -> PathBuf {
         "ProgramData/Microsoft/Network/Connections/Pbk/rasphone.pbk",
         "[Office]\r\nType=2\r\n",
     );
+    let mut lnk = b"L\0\0\0".to_vec();
+    lnk.extend(
+        r"C:\Users\Alice\Documents"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes),
+    );
+    let sm = root.join("Users/alice/AppData/Roaming/Microsoft/Windows/Start Menu/Programs");
+    std::fs::create_dir_all(&sm).unwrap();
+    std::fs::write(sm.join("Old docs.lnk"), &lnk).unwrap();
+    std::fs::write(root.join("Users/alice/Desktop/Docs.lnk"), &lnk).unwrap();
     let src = OfflineVolume::open(&root).unwrap();
     let opts = backup::PlanOptions {
         packs: load_all(None).0,
@@ -175,10 +185,33 @@ fn restores_into_a_new_user_with_remapping() {
         "{text}"
     );
 
+    let docs_lnk = target.local(r"C:\Users\sam\Desktop\Docs.lnk");
+    std::fs::create_dir_all(docs_lnk.parent().unwrap()).unwrap();
+    std::fs::write(&docs_lnk, b"the new PC's own shortcut").unwrap();
     let host = TestHost::default();
     let r = execute(&p, &host, &mut Ui::default(), false);
     assert_eq!(r.failed(), 0, "{}", report::result_text(&p, &r));
     assert!(r.verified > 5);
+    let why = |win: &str| {
+        r.outcomes
+            .iter()
+            .find(|o| o.what == win)
+            .map(|o| (o.status, o.detail.clone()))
+    };
+    let (st, d) = why(r"C:\Users\sam\Desktop\Docs.lnk").unwrap();
+    assert!(st == run::Status::Skipped && d.contains("shortcut"), "{d}");
+    assert!(
+        !target
+            .local(r"C:\Users\sam\Desktop\Docs (migrated).lnk")
+            .exists()
+    );
+    let (st, d) =
+        why(r"C:\Users\sam\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Old docs.lnk")
+            .unwrap();
+    assert!(
+        st == run::Status::Skipped && d.contains("old profile"),
+        "{d}"
+    );
     assert_eq!(
         read(&target, r"C:\Users\sam\Documents\report.txt"),
         read_backup(&b, "users/Alice/folders/Documents/report.txt")

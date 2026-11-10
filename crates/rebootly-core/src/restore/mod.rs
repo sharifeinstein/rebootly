@@ -12,6 +12,7 @@
 
 pub mod conflict;
 mod files;
+mod fit;
 pub mod host;
 pub mod input;
 pub mod map;
