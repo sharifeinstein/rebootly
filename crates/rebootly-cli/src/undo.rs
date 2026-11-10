@@ -30,6 +30,7 @@ pub struct UndoArgs {
 }
 
 pub fn run(a: UndoArgs) -> anyhow::Result<u8> {
+    eprintln!("Rebootly {}", crate::VERSION);
     let header_profile = |d: &Path| -> Option<String> {
         match undo::read_journal(d).ok()?.into_iter().next()? {
             UndoEntry::Header { profile, .. } => profile.rsplit('\\').next().map(String::from),

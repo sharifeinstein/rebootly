@@ -127,6 +127,7 @@ fn print_preflight(p: &Preflight) {
 
 /// Returns the process exit code: 0 all copied, 2 finished with failures.
 pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
+    eprintln!("Rebootly {}", crate::VERSION);
     if matches!(a.cloud_files, CloudArg::Hydrate) && !a.live {
         bail!(
             "--cloud-files hydrate works only with --live (offline, the files can't be downloaded)"

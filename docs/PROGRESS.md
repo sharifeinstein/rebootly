@@ -108,6 +108,8 @@ Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` 
 
 - 2026-11-10 (cross-user VM dry run, Picard → Riker): existing shortcuts are never replaced or duplicated by restore (keep-both made `Desktop (migrated).lnk` pointing into the old profile); binary pack files containing the old profile path are skipped when the profile path changes (Quick Access jump list, Start Menu/SendTo shortcuts); files named after the old account's SID (`Searches\winrt--{SID}-.searchconnector-ms`) are skipped (`restore::fit`). chrome/edge packs v3 also leave out LevelDB `LOCK`/`LOG` files.
 
+- 2026-11-10: `rebootly --version` (and the first line of backup/restore/undo output) shows the commit it was built from, read from `.git` by `crates/rebootly-cli/build.rs` (no `git` program needed; `unknown` outside a checkout). Added after a stale exe was tested on the VM.
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).

@@ -92,3 +92,13 @@ fn restore_needs_windows_or_a_simulation() {
     assert_eq!(code, 1);
     assert!(err.contains("no manifest.json"), "{err}");
 }
+
+#[test]
+fn version_names_the_commit() {
+    let (code, out, _) = rebootly(&["--version"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.starts_with("rebootly 0.") && out.contains("(commit "),
+        "{out}"
+    );
+}

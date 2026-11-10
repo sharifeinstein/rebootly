@@ -158,6 +158,7 @@ pub(crate) fn target(
 }
 
 pub fn run(a: RestoreArgs) -> anyhow::Result<u8> {
+    eprintln!("Rebootly {}", crate::VERSION);
     let backup = Backup::open(&a.backup)?;
     let opts = options(&a)?;
     let sim_name = || -> anyhow::Result<String> {

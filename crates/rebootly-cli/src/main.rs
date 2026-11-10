@@ -14,8 +14,20 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use rebootly_core::install::WindowsInstall;
 
+/// `0.1.0 (commit b6c4d86)`: the commit tells builds apart on test PCs.
+pub const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (commit ",
+    env!("REBOOTLY_COMMIT"),
+    ")"
+);
+
 #[derive(Parser)]
-#[command(name = "rebootly", version, about = "Portable PC migration and backup")]
+#[command(
+    name = "rebootly",
+    version = VERSION,
+    about = "Portable PC migration and backup"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
