@@ -58,7 +58,7 @@ pub struct StreamEntry {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SourceInfo {
     pub machine: Option<String>,
     pub os_name: String,
@@ -69,7 +69,7 @@ pub struct SourceInfo {
     pub environment: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FolderRecord {
     /// KNOWNFOLDERID
     pub guid: String,
@@ -80,7 +80,7 @@ pub struct FolderRecord {
     pub note: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserRecord {
     pub sid: String,
     pub username: String,
@@ -99,7 +99,7 @@ pub struct ExcludedRecord {
     pub bytes: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackPathRecord {
     /// Template from the pack, e.g. `%APPDATA%\Code\User`.
     pub template: String,
@@ -112,11 +112,11 @@ pub struct PackPathRecord {
     pub rewrite: bool,
     pub status: PackPathStatus,
     /// For `list_only`: names found in the folder.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub listed: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PackPathStatus {
     Copied,
@@ -130,7 +130,7 @@ pub enum PackPathStatus {
     Duplicate,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackRecord {
     pub id: String,
     pub name: String,
@@ -147,7 +147,7 @@ pub struct PackRecord {
     pub registry_file: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomRecord {
     pub label: String,
     pub source_path: String,
@@ -155,7 +155,7 @@ pub struct CustomRecord {
     pub note: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManualStep {
     pub title: String,
     pub detail: String,

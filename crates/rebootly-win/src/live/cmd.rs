@@ -45,6 +45,28 @@ pub fn run_cmd(cmd: &mut Command) -> Result<Vec<u8>, String> {
     }
 }
 
+/// Run with the console attached (long jobs whose progress the user should
+/// see, like `winget import`), with a timeout.
+pub fn run_visible(cmd: &mut Command, timeout: Duration) -> Result<(), String> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("not available ({e})"))?;
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(status)) => return Err(format!("finished with errors ({status})")),
+            Ok(None) if start.elapsed() > timeout => {
+                let _ = child.kill();
+                return Err(format!("timed out after {} min", timeout.as_secs() / 60));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(500)),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+}
+
 /// `powershell -NoProfile -NonInteractive -EncodedCommand <script>`.
 /// Encoded, so quotes in the script survive Windows argument quoting.
 pub fn powershell(script: &str) -> Command {

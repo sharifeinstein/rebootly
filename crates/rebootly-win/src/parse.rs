@@ -137,6 +137,45 @@ pub fn encode_command(script: &str) -> String {
     out
 }
 
+/// Image names from `tasklist /fo csv /nh` (`"chrome.exe","1234",...`).
+pub fn tasklist_images(csv: &str) -> Vec<String> {
+    csv.lines()
+        .filter_map(|l| {
+            l.strip_prefix('"')?
+                .split_once('"')
+                .map(|(n, _)| n.to_owned())
+        })
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// `CurrentBuildNumber    REG_SZ    22631` → 22631 (`reg query` output).
+pub fn reg_query_number(out: &str, value: &str) -> Option<u32> {
+    out.lines()
+        .find(|l| {
+            l.split_whitespace()
+                .next()
+                .is_some_and(|n| n.eq_ignore_ascii_case(value))
+        })
+        .and_then(|l| l.split_whitespace().last())
+        .and_then(|n| n.parse().ok())
+}
+
+/// A PowerShell single-quoted string literal.
+pub fn ps_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// A certificate thumbprint (40 hex digits for SHA-1).
+pub fn is_thumbprint(s: &str) -> bool {
+    (40..=64).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Can be passed as `name="…"` to netsh / schtasks without breaking quoting.
+pub fn quotable(s: &str) -> bool {
+    !s.is_empty() && !s.contains(['"', '\0', '\r', '\n'])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +260,18 @@ mod tests {
         let p = password(&[7; 24]);
         assert_eq!(p.len(), 24);
         assert!(p.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn restore_helpers() {
+        let csv =
+            "\"System Idle Process\",\"0\",\"Services\"\r\n\"chrome.exe\",\"4242\",\"Console\"\r\n";
+        assert_eq!(tasklist_images(csv), ["System Idle Process", "chrome.exe"]);
+        let reg = "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\r\n    CurrentBuildNumber    REG_SZ    22631\r\n";
+        assert_eq!(reg_query_number(reg, "CurrentBuildNumber"), Some(22631));
+        assert_eq!(ps_quote("C:\\it's"), "'C:\\it''s'");
+        assert!(is_thumbprint("0123456789ABCDEF0123456789abcdef01234567"));
+        assert!(!is_thumbprint("../../x"));
+        assert!(quotable("Home Wi-Fi") && !quotable("a\"b"));
     }
 }

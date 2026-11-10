@@ -13,6 +13,7 @@ pub mod install;
 pub mod packs;
 pub mod profiles;
 pub mod regfile;
+pub mod restore;
 pub mod source;
 pub mod winpath;
 

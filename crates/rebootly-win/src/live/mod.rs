@@ -7,11 +7,13 @@
 //! is needed both for `RegSaveKeyExW` and to read other users' profiles.
 
 mod access;
+mod attrs;
 mod capture;
 mod cmd;
 mod knownfolder;
 mod power;
 mod regsave;
+mod restore;
 mod streams;
 mod token;
 mod volume;
@@ -32,6 +34,8 @@ use rebootly_core::winpath::Mapped;
 use rebootly_core::{Captures, Hive, HiveRef, OfflineVolume, Source, SourceError, StreamInfo};
 
 pub use power::{SleepGuard, on_battery};
+pub use restore::{WinRestoreHost, live_target};
+pub use token::is_elevated;
 pub use volume::filesystem_type;
 
 #[derive(Debug, thiserror::Error)]

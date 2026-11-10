@@ -3,8 +3,10 @@
 mod backup;
 mod pack;
 mod render;
+mod restore;
 mod sensitive;
 mod source;
+mod undo;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -38,6 +40,10 @@ enum Cmd {
     },
     /// Back up user folders (Tier 1) and raw registry hives.
     Backup(Box<backup::BackupArgs>),
+    /// Restore a backup onto this PC (run as the user it is for).
+    Restore(Box<restore::RestoreArgs>),
+    /// Undo a restore (puts back replaced files and settings).
+    Undo(undo::UndoArgs),
     /// List or validate app packs.
     #[command(subcommand)]
     Pack(pack::PackCmd),
@@ -82,6 +88,8 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
             Ok(0)
         }
         Cmd::Backup(args) => backup::run(*args),
+        Cmd::Restore(args) => restore::run(*args),
+        Cmd::Undo(args) => undo::run(args),
         Cmd::Pack(cmd) => pack::run(cmd),
         Cmd::Sensitive(cmd) => sensitive::run(cmd),
     }

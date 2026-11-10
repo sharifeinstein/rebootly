@@ -44,6 +44,46 @@ pub fn rfc3339(t: SystemTime) -> String {
     }
 }
 
+/// (year, month, day) → days since 1970-01-01 (inverse of `civil_from_days`).
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = i64::from(if m > 2 { m - 3 } else { m + 9 });
+    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Parse what [`rfc3339`] writes (`YYYY-MM-DDTHH:MM:SS[.fraction]Z`).
+pub fn parse_rfc3339(s: &str) -> Option<SystemTime> {
+    let s = s.strip_suffix('Z')?;
+    let (date, time) = s.split_once('T')?;
+    let mut d = date.splitn(3, '-').map(str::parse::<i64>);
+    let (y, mo, da) = (d.next()?.ok()?, d.next()?.ok()?, d.next()?.ok()?);
+    let (hms, frac) = time.split_once('.').unwrap_or((time, ""));
+    let mut t = hms.splitn(3, ':').map(str::parse::<u64>);
+    let (h, mi, se) = (t.next()?.ok()?, t.next()?.ok()?, t.next()?.ok()?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&da) || h > 23 || mi > 59 || se > 60 {
+        return None;
+    }
+    let nanos = if frac.is_empty() {
+        0
+    } else {
+        if frac.len() > 9 || !frac.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        format!("{frac:0<9}").parse::<u32>().ok()?
+    };
+    let secs = days_from_civil(y, mo as u32, da as u32) * 86_400 + (h * 3600 + mi * 60 + se) as i64;
+    let base = if secs >= 0 {
+        UNIX_EPOCH + std::time::Duration::from_secs(secs as u64)
+    } else {
+        UNIX_EPOCH - std::time::Duration::from_secs(secs.unsigned_abs())
+    };
+    Some(base + std::time::Duration::from_nanos(u64::from(nanos)))
+}
+
 /// `YYYYMMDD-HHMMSS` for folder names.
 pub fn stamp(t: SystemTime) -> String {
     let (y, mo, d, h, mi, s, _) = parts(t);
@@ -70,5 +110,29 @@ mod tests {
             rfc3339(UNIX_EPOCH - Duration::from_millis(500)),
             "1969-12-31T23:59:59.500000000Z"
         );
+    }
+
+    #[test]
+    fn parses_what_it_formats() {
+        for t in [
+            UNIX_EPOCH + Duration::new(1_794_249_361, 500),
+            UNIX_EPOCH,
+            UNIX_EPOCH + Duration::from_secs(951_782_400),
+            UNIX_EPOCH - Duration::from_millis(500),
+        ] {
+            assert_eq!(parse_rfc3339(&rfc3339(t)), Some(t));
+        }
+        assert_eq!(
+            parse_rfc3339("2026-11-09T22:29:35.5Z"),
+            Some(UNIX_EPOCH + Duration::new(1_794_263_375, 500_000_000))
+        );
+        for bad in [
+            "",
+            "2026-11-09",
+            "2026-13-01T00:00:00Z",
+            "2026-11-09T22:29:35+01:00",
+        ] {
+            assert_eq!(parse_rfc3339(bad), None, "{bad}");
+        }
     }
 }

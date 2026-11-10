@@ -7,6 +7,7 @@
 //! backup-semantics reads, VSS for locked files, alternate data streams,
 //! `SHGetKnownFolderPath` cross-check, Tier 4 command captures, sleep
 //! prevention, battery check, target filesystem type.
+//! M5: the restore target (current user's known folders) and `RestoreHost`.
 
 #[cfg(windows)]
 mod live;
@@ -14,4 +15,7 @@ mod live;
 mod parse;
 
 #[cfg(windows)]
-pub use live::{LiveError, LiveWindows, SleepGuard, filesystem_type, on_battery};
+pub use live::{
+    LiveError, LiveWindows, SleepGuard, WinRestoreHost, filesystem_type, is_elevated, live_target,
+    on_battery,
+};

@@ -21,21 +21,24 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M5 — Restore (not started)
-Last session: 2026-11-10 — M4 finished and verified on a clean Windows 10 22H2 VM (elevated, live): 236 files in 4 s, 0 failed; a file held open without sharing was read from a VSS shadow (shadow deleted afterwards); a custom stream kept under `streams/`, Zone.Identifier dropped; test certificate exported as PFX into `sensitive.age`; power plan, default apps, drivers, printers, tasks captured; target filesystem (NTFS) detected. Expected warnings on a clean VM: no winget, no Wi-Fi adapter. Fixed on the way: hydrate check (`Source::is_live`), static CRT, passphrase-too-short message, report rows grouped per `system/` kind.
+Current milestone: M5 — Restore (implemented 2026-11-10; waiting for the Windows VM test before it is ticked)
+Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` (plan → apps → files → packs → registry → system → Explorer → verify → manual steps), conflict policies, dry run, undo journal + `rebootly undo`, `--simulate-root` for previews/tests off Windows. 119 tests pass; clippy clean on Linux and (cloud type-check) for `x86_64-pc-windows-msvc`. The Windows side (`rebootly-win::live::restore`: `live_target`, `WinRestoreHost`) has only been type-checked, never run.
 
 ## Next step
-1. M5 restore (SPEC §5). Read only §5 and §10 (manifest) first. Inputs now include `streams/` + manifest `streams`, `snapshot`, the Tier 4 files (`powercfg /import`, `netsh wlan add profile`, PFX import with `system/certs/PFX-PASSWORD.txt` from the bundle, VPN phonebooks, default-apps report only).
-2. Test restores on the user's Windows 10 VM (VM `DESKTOP-D3P1F40`, user `Picard`, target disk `E:`, a backup already at `E:\rb\DESKTOP-D3P1F40_20261110-131615`, passphrase file `C:\rebootly\pp.txt`). Copy `target\release\rebootly.exe` from the user's PC (static CRT, no runtime needed).
-3. Open question: on the VM the hidden passphrase prompt received fewer than 8 characters twice (probably pasted through the VM console). The prompt now reports how many characters arrived; check it once by typing.
-4. Still untested for real: `--cloud-files hydrate` (needs OneDrive signed in), Wi-Fi export (needs a Wi-Fi adapter), winget export (needs App Installer).
+1. Test restore on the user's Windows 10 VM (VM `DESKTOP-D3P1F40`, user `Picard`, backup at `E:\rb\DESKTOP-D3P1F40_20261110-131615`, passphrase file `C:\rebootly\pp.txt`). Build on the PC (`cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`), copy `target\release\rebootly.exe` to the VM, elevated PowerShell:
+   - `rebootly restore E:\rb\DESKTOP-D3P1F40_20261110-131615 --dry-run --sensitive --passphrase-file C:\rebootly\pp.txt` (paste the plan and the conflict decisions)
+   - best on a second, fresh local user that is an administrator (e.g. `Riker`; sign in as Riker so HKCU and the profile are his): `rebootly restore <backup> --user Picard --sensitive --passphrase-file C:\rebootly\pp.txt` → check Desktop/Documents, VS Code/Git settings with rewritten paths, wallpaper/mouse (registry), the test certificate in `certmgr.msc`, power plan, hosts, `report.txt` in `%USERPROFILE%\.rebootly-undo\…`
+   - then `rebootly undo --list` and `rebootly undo` → everything back
+   - into the same user (`Picard`): expect "already there" for everything (identical files)
+2. Things only Windows can tell: `reg export`/`reg import` of the allowlisted keys, `Test-Path Registry::…`, Explorer restart (AutoRestartShell, not elevated), `powercfg /import` GUID parsing on a non-English Windows, `Import-PfxCertificate` with the bundle password file, stream + hidden/system attribute writes, `winget import` (needs App Installer).
+3. Then M6 (TUI). Open from M4: the hidden passphrase prompt got fewer than 8 characters twice on the VM (probably paste through the VM console); `--cloud-files hydrate`, Wi-Fi export and winget export are still untested for real.
 
 ## Milestones
 - [x] M1 Core resolver
 - [x] M2 Copy engine
 - [x] M3 Packs
 - [x] M4 Live Windows
-- [ ] M5 Restore
+- [ ] M5 Restore (code done; Windows VM test pending)
 - [ ] M6 TUI
 - [ ] M7 Offline (WinPE/Linux, BitLocker)
 - [ ] M8 Rescue USB (Ventoy, Alpine, WinPE scripts)
@@ -87,6 +90,16 @@ Last session: 2026-11-10 — M4 finished and verified on a clean Windows 10 22H2
 
 - 2026-11-10: `Source::is_live()` says whether the source is the running Windows; `environment()` only says where the process runs (an offline backup of another disk made from Windows is still "live-windows"). Found by `cargo test` on Windows: hydrate's live-only check used `environment()`.
 
+- 2026-11-10: Restore reads the manifest through a tolerant view (`restore::input::BackupManifest`); the record types got `Deserialize`. `time::parse_rfc3339` added.
+- 2026-11-10: One restore run = one backup user → the user running Rebootly (HKCU and `SHGetKnownFolderPath` only work for that user). Elevation required except for `--dry-run`. The plan names the target user and profile and asks before starting (`--yes` to skip).
+- 2026-11-10: Conflict policies gained `overwrite` (SPEC listed skip / overwrite-if-newer / keep-both / ask). Defaults: keep-both for folders and custom, overwrite for packs and system (a new app's default config is always newer than the old one). Identical files are always skipped, so a second run is cheap and safe.
+- 2026-11-10: Registry import allowlist = the `registry:` entries of the pack *installed in this Rebootly* (built-in or `--packs-dir`), not anything the backup says; unknown packs' `.reg` files are refused. Pack destinations outside the profile need the same: the template must be a path of the installed pack.
+- 2026-11-10: hosts and both `rasphone.pbk` files are merged (missing entries appended), not overwritten. Scheduled tasks are opt-in (`--tasks`). Existing Wi-Fi profiles, certificates and tasks are left alone. Offline Wi-Fi XMLs (keys DPAPI-protected) are never imported, only listed.
+- 2026-11-10: Undo journal is write-ahead (`journal.jsonl`, fsync per entry) in `%USERPROFILE%\.rebootly-undo\<job>_<time>[-n]\`; undo keeps files changed after the restore unless `--force`, and marks the run `undone.txt`. Registry undo re-imports the exported keys and deletes keys that didn't exist; a key's existence is checked with `Test-Path Registry::…`, so a failing `reg export` never turns into a delete on undo.
+- 2026-11-10: `--simulate-root DIR` (`Target::simulated`, `SimHost`): files are restored under `DIR/C/…` and system steps only listed. Used by the CLI tests and for previews off Windows; not the "offline file-only restore" of SPEC §5 (still later).
+- 2026-11-10: A `desktop.ini` already at the destination is kept (Windows writes its own); restored ones get hidden+system. Only hidden/system attributes are restored (read-only would block a later restore or undo).
+- 2026-11-10: VS Code extension folder names (`publisher.name-1.2.3`) lose the version in the `post_restore` checklist. `post_restore` commands are listed as manual steps, not run.
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
@@ -108,6 +121,10 @@ Last session: 2026-11-10 — M4 finished and verified on a clean Windows 10 22H2
 - No `report.html` yet (M6), only `report.txt`.
 - SMART check and the `ddrescue` suggestion (SPEC §3.5) aren't implemented; they need platform code (M4/M7).
 - `cargo-deny` config not added yet (M9, or earlier once there are more deps).
+
+- Restore: `min_app_version` gating not implemented (`os:` is); file ACLs and read-only attributes aren't restored; `post_restore` commands aren't run (listed). Packs whose app is running are skipped as a whole. Long-running `winget import` output goes straight to the console (2 h timeout).
+- Restore of other users' data needs a sign-in as each of them (by design); custom folders are restored by every run (identical the second time).
+- Undo can't put back a Wi-Fi profile or certificate that the restore *replaced* (existing ones are never replaced, so this shouldn't happen).
 
 ## Crate map (one line per module: what it does)
 - `rebootly-core::hive` — read-only regf parser: keys, values, case-insensitive lookup, bounds-checked (`mod.rs`, `cell.rs`, `value.rs`).
@@ -144,4 +161,7 @@ Last session: 2026-11-10 — M4 finished and verified on a clean Windows 10 22H2
 - `rebootly-win::live` (cfg(windows)) — `LiveWindows` (`mod.rs`), `access` (backup-semantics reads, snapshots), `regsave` (RegSaveKeyExW), `token` (elevation, privileges, SID), `capture/` (`inventory`: winget, Get-Printer, powercfg, dism, pnputil; `secrets`: netsh Wi-Fi, certificates), `cmd` (timeouts, PowerShell -EncodedCommand), `vss` (shadow copies), `streams` (ADS), `volume` (volume root, filesystem type), `knownfolder`, `power` (SleepGuard, on_battery), `wide`.
 - `rebootly-win::parse` — platform-neutral parsing for the live code (stream info buffers, GUIDs, VSS answers, base64), tested on Linux.
 - `rebootly-cli` also: `source.rs` (`--live` / `--windows-root`, keep-awake), `sensitive.rs` (passphrase input, `rebootly sensitive list|extract`).
+- `rebootly-core::restore` — restore engine (SPEC §5): `input` (manifest view, decrypted bundle in a private temp dir), `target` (new PC/user, path mapping, `--simulate-root`), `map` (backup file → destination), `plan` + `regplan` + `notes` + `system` (phase 1: files, `.reg` checks, Tier 4 actions, manual steps), `run` + `phases` + `files` (phases 2–9), `conflict` (policies, `(migrated)` names), `rewrite` (profile paths in text), `regcheck` (.reg allowlist check), `merge` (hosts, phonebooks), `undo` (journal, `undo`, `list`), `host` (`RestoreHost`, `SysOp`, `SimHost`), `report` (plan/result text).
+- `rebootly-win::live::restore` (cfg(windows)) — `live_target()` (current user's known folders, env, build) and `WinRestoreHost` (reg, netsh, powercfg, PowerShell certificates, schtasks, winget, tasklist, streams); `attrs` (hidden/system attributes).
+- `rebootly-cli` also: `restore.rs` (`rebootly restore`, prompts), `undo.rs` (`rebootly undo`).
 - `rebootly-linux`, `rebootly-tui` — placeholders for M7, M6.
