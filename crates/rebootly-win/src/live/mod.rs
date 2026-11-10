@@ -132,6 +132,9 @@ impl Source for LiveWindows {
     ) -> Result<Option<PathBuf>, SourceError> {
         self.inner.hive_snapshot(file, which)
     }
+    fn is_live(&self) -> bool {
+        true
+    }
     fn system_captures(&self, sensitive: bool) -> Captures {
         self.captures.run(sensitive)
     }

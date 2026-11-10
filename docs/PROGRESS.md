@@ -84,6 +84,8 @@ Last session: 2026-11-09 — M4 part 2: VSS fallback for locked files, `--cloud-
 
 - 2026-11-10: Windows builds link the C runtime statically (`.cargo/config.toml`, `+crt-static`), so `rebootly.exe` runs on a clean PC/VM/WinPE without the VC++ Redistributable.
 
+- 2026-11-10: `Source::is_live()` says whether the source is the running Windows; `environment()` only says where the process runs (an offline backup of another disk made from Windows is still "live-windows"). Found by `cargo test` on Windows: hydrate's live-only check used `environment()`.
+
 ## Known issues / TODO
 - None of the live commands (winget, netsh, Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies) has run for real yet. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).

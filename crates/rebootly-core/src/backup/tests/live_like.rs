@@ -67,6 +67,9 @@ impl Source for FakeLive {
     fn open_stream(&self, path: &Path, stream: &str, _snapshot: bool) -> std::io::Result<File> {
         File::open(self.streams_dir.join(name(path)).join(stream))
     }
+    fn is_live(&self) -> bool {
+        true
+    }
     fn system_captures(&self, sensitive: bool) -> Captures {
         let mut c = Captures {
             warnings: vec!["printer list not available (test)".into()],

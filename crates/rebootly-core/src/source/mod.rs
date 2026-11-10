@@ -112,6 +112,12 @@ pub trait Source: Send + Sync {
     fn system_captures(&self, _sensitive: bool) -> Captures {
         Captures::default()
     }
+    /// The source is the running Windows itself (`--live`). Not the same as
+    /// `environment()`, which says where the process runs: an offline backup
+    /// of another disk made from Windows runs on live Windows too.
+    fn is_live(&self) -> bool {
+        false
+    }
     /// Open a point-in-time copy of `path` (VSS in live mode), for a file
     /// another program holds locked. Default: unsupported.
     fn open_snapshot(&self, _path: &Path) -> std::io::Result<File> {

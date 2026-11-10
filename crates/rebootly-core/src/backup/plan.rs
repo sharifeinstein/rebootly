@@ -9,7 +9,6 @@ use super::exclude::{Category, CloudFiles, ExcludeOptions};
 use super::extras::{GeneratedFile, plan_user_packs};
 use super::manifest::{CustomRecord, FolderRecord, ManualStep, PackRecord, SourceInfo, UserRecord};
 use super::walk::{FolderJob, PathIssue, PlannedFile, ReparsePoint, SkipSet, rel_components, walk};
-use crate::env::Environment;
 use crate::hive::dirty;
 use crate::packs::schema::CompiledPack;
 use crate::source::{HiveRef, Profile, Source, SourceError};
@@ -251,7 +250,7 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
         .map(|j| j.src_root.clone())
         .collect();
     let mut exclude = opts.exclude;
-    if exclude.cloud_files == CloudFiles::Hydrate && src.environment() != Environment::LiveWindows {
+    if exclude.cloud_files == CloudFiles::Hydrate && !src.is_live() {
         exclude.cloud_files = CloudFiles::Skip;
         plan.warnings.push(
             "downloading online-only OneDrive files works only in live mode; they are skipped"
