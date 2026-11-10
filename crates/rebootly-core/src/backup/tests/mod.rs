@@ -223,13 +223,13 @@ fn cancel_then_resume_copies_only_the_rest() {
     let job = Job::create(&t.path().join("usb"), Some("OLD-PC")).unwrap();
     let mut ro = quick();
     ro.jobs = 1;
-    let cancel = ro.cancel.clone();
+    let cancel = ro.flow.clone();
     let mut seen = 0;
     let m1 = run(&src, &p, &job, &ro, &mut |e| {
         if let Event::File(_) = e {
             seen += 1;
             if seen == 2 + p.generated.len() {
-                cancel.store(true, Ordering::Relaxed);
+                cancel.stop();
             }
         }
     })

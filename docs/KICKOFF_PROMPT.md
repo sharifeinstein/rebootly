@@ -57,4 +57,4 @@ Last session: <date> — <one line>
 >
 > Build and test in your cloud workspace (copy the repo there; the VM behind my folder has no Rust). I can build, test and run on Windows myself from PowerShell: when something needs real Windows, give me the exact commands and I'll paste back the output. Don't spend effort on Windows tooling in the cloud. Ask once for delete permission on the repo folder before running git there. Sync back after each step using the procedure in PROGRESS.md.
 >
-> Pick up at "Next step" (rest of M4).
+> Pick up at "Next step".

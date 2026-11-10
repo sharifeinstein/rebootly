@@ -260,13 +260,13 @@ Tool version, schema version, job ID, timestamps, `complete` flag; source machin
 
 ## 11. UX / ease of use
 
-- Three modes on the start screen: **Quick** (Tier 1 + detected packs), **Full** (everything detected), **Custom** (tree with checkboxes and sizes).
+- Three modes on the start screen: **Quick** (Tier 1 + detected packs + Tier 4 system items, which are small and carry the app list), **Full** (everything detected: also `Users\Public`, every drive-root folder, and keys/credentials into the encrypted bundle), **Custom** (tree with checkboxes and sizes). CLI: default = Quick, `--full`, or the individual flags.
 - An automatic **"Rescue" flow** when started in WinPE/Linux: find Windows → unlock BitLocker → pick user(s) → choose target → go.
 - On restore, backups on the stick/NAS are found automatically and the newest is offered.
 - Plain-language pre-flight summary: "47.2 GB, ~38 min to this USB, 12 apps to reinstall, 3 things you'll need to do by hand."
 - Progress with ETA and current file; pause, resume and safe cancel; completion sound or notification.
-- Saved **job profiles** on the stick (for repeat backups and for IT techs doing many PCs). A CLI mirror of every TUI action.
-- Printable **Manual steps checklist**, also shown at the end of restore with tick-boxes.
+- Saved **job profiles** on the stick (for repeat backups and for IT techs doing many PCs), as `<target>\rebootly-profiles\<name>.json` (on a drive the target is `<drive>\Rebootly\`). A CLI mirror of every TUI action (`rebootly backup --profile FILE`, `--save-profile NAME`).
+- Printable **Manual steps checklist** (`report.html` beside `report.txt`, self-contained), also shown at the end of backup and restore with tick-boxes.
 - In live mode before backup: "Deactivate licenses on this PC now" checklist, and a "save your BitLocker recovery key" reminder.
 - **Verify** command: re-hash a backup against its manifest. **Compare** command: after restore, check the new PC against the manifest.
 - Logs: rotating, on the target, with secrets redacted. `--debug` flag.

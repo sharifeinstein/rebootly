@@ -12,6 +12,7 @@ repository = "https://github.com/sharifeinstein/rebootly"
 [workspace.dependencies]
 rebootly-core = { path = "crates/rebootly-core" }
 rebootly-win = { path = "crates/rebootly-win" }
+rebootly-tui = { path = "crates/rebootly-tui" }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

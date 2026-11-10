@@ -1,5 +1,5 @@
-//! Human-readable `report.txt` (SPEC §10). The HTML report comes with the
-//! TUI (M6).
+//! Human-readable `report.txt` (SPEC §10); `report_html` has the printable
+//! version.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -7,7 +7,28 @@ use std::fmt::Write as _;
 use super::manifest::{FileStatus, Manifest};
 use super::preflight::gib;
 
-const MAX_LISTED: usize = 50;
+pub(crate) const MAX_LISTED: usize = 50;
+
+/// Copied files and bytes per row: `users/<u>/<folder>/<sub>` or
+/// `system/<item>` (one row per kind, not per file). Streams are left out.
+pub(crate) fn per_folder(m: &Manifest) -> BTreeMap<String, (u64, u64)> {
+    let mut per_folder: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    for f in m.files.iter().filter(|f| f.status == FileStatus::Ok) {
+        if f.path.starts_with("streams/") {
+            continue;
+        }
+        let key: Vec<&str> = f.path.split('/').take(4).collect();
+        let key = if key.first() == Some(&"users") {
+            key.join("/")
+        } else {
+            key[..key.len().min(2)].join("/")
+        };
+        let e = per_folder.entry(key).or_default();
+        e.0 += 1;
+        e.1 += f.size;
+    }
+    per_folder
+}
 
 pub fn text(m: &Manifest) -> String {
     let mut s = String::new();
@@ -67,22 +88,7 @@ pub fn text(m: &Manifest) -> String {
         );
     }
 
-    let mut per_folder: BTreeMap<String, (u64, u64)> = BTreeMap::new();
-    for f in m.files.iter().filter(|f| f.status == FileStatus::Ok) {
-        if f.path.starts_with("streams/") {
-            continue;
-        }
-        let key: Vec<&str> = f.path.split('/').take(4).collect();
-        let key = if key.first() == Some(&"users") {
-            key.join("/")
-        } else {
-            // system/<item>: one row per kind (tasks, power, hives), not per file.
-            key[..key.len().min(2)].join("/")
-        };
-        let e = per_folder.entry(key).or_default();
-        e.0 += 1;
-        e.1 += f.size;
-    }
+    let per_folder = per_folder(m);
     let _ = writeln!(s, "\nCopied by folder:");
     for (k, (n, b)) in &per_folder {
         let _ = writeln!(s, "  {k:<50} {n:>7} files  {}", gib(*b));

@@ -4,6 +4,8 @@ Portable PC migration and backup tool for Windows (live Windows, WinPE, Linux re
 The specification is [docs/SPEC.md](docs/SPEC.md); status is in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ```sh
+cargo run -p rebootly-cli            # the interactive screens (TUI)
+cargo run -p rebootly-cli -- tui --simulate-root /tmp/sim --drive /tmp/usb   # preview off Windows
 cargo test
 cargo run -p rebootly-cli -- inspect --windows-root tests/fixtures/win11-basic
 cargo run -p rebootly-cli -- inspect --scan /mnt --json

@@ -6,9 +6,8 @@
 //! `Zone.Identifier` (the "downloaded from the internet" mark) is dropped
 //! unless `keep_zone_identifier`.
 
-use std::sync::atomic::AtomicBool;
-
 use super::copy::{RetryPolicy, copy_file};
+use super::flow::Flow;
 use super::manifest::{FileEntry, FileStatus, StreamEntry};
 use super::run::Job;
 use super::time::rfc3339;
@@ -52,7 +51,7 @@ pub fn copy_one(
     f: &PlannedFile,
     job: &Job,
     opts: FileCopyOptions,
-    cancel: &AtomicBool,
+    flow: &Flow,
 ) -> Option<FileEntry> {
     let open = |snap: bool| {
         if snap {
@@ -61,7 +60,7 @@ pub fn copy_one(
             src.open_read(&f.src)
         }
     };
-    let c = match copy_file(&open, &job.native(&f.dest), f.mtime, opts.retry, cancel) {
+    let c = match copy_file(&open, &job.native(&f.dest), f.mtime, opts.retry, flow) {
         Ok(c) => c,
         Err(fail) if fail.reason == "cancelled" => return None,
         Err(fail) => {
@@ -88,7 +87,7 @@ pub fn copy_one(
                     c.from_snapshot,
                     job,
                     opts,
-                    cancel,
+                    flow,
                 )?);
             }
         }
@@ -106,7 +105,7 @@ fn copy_stream(
     snap: bool,
     job: &Job,
     opts: FileCopyOptions,
-    cancel: &AtomicBool,
+    flow: &Flow,
 ) -> Option<StreamEntry> {
     let mut out = StreamEntry {
         name: s.name.clone(),
@@ -123,7 +122,7 @@ fn copy_stream(
     // Same source as the main stream: a locked file's streams come from the
     // snapshot too.
     let open = |_| src.open_stream(&f.src, &s.name, snap);
-    match copy_file(&open, &job.native(&stored), None, opts.retry, cancel) {
+    match copy_file(&open, &job.native(&stored), None, opts.retry, flow) {
         Ok(c) => {
             out.status = FileStatus::Ok;
             out.sha256 = Some(c.sha256);

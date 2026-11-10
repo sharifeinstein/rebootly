@@ -2,13 +2,13 @@
 //! `manifest.json` and `report.txt`.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::SystemTime;
 
 use super::copy::RetryPolicy;
 use super::filecopy::{FileCopyOptions, copy_one};
+use super::flow::Flow;
 use super::manifest::{ExcludedRecord, FileEntry, FileStatus, Manifest, SCHEMA_VERSION};
 use super::plan::Plan;
 use super::sensitive::{BUNDLE_FILE, Passphrase, write_bundle};
@@ -17,12 +17,16 @@ use super::time::{rfc3339, stamp};
 use super::walk::PlannedFile;
 use crate::source::Source;
 
+/// How often [`Event::Tick`] is sent while no file finishes.
+pub const TICK: std::time::Duration = std::time::Duration::from_millis(200);
+
 #[derive(Debug, Clone)]
 pub struct RunOptions {
     pub retry: RetryPolicy,
     /// Parallel copy workers (bounded I/O).
     pub jobs: usize,
-    pub cancel: Arc<AtomicBool>,
+    /// Cancel, pause and byte progress (shared with the front end).
+    pub flow: Flow,
     /// Required when the plan has sensitive files (`sensitive.age`).
     pub passphrase: Option<Passphrase>,
     /// Override age's calibrated scrypt cost (tests only).
@@ -36,7 +40,7 @@ impl Default for RunOptions {
         RunOptions {
             retry: RetryPolicy::default(),
             jobs: 4,
-            cancel: Arc::new(AtomicBool::new(false)),
+            flow: Flow::default(),
             passphrase: None,
             bundle_work_factor: None,
             keep_zone_identifier: false,
@@ -143,6 +147,9 @@ pub enum Event<'a> {
         already_done: usize,
     },
     File(&'a FileEntry),
+    /// Nothing finished for a while (large file): a chance to redraw and
+    /// read keys. Sent about every [`TICK`].
+    Tick,
     /// Writing the encrypted bundle (after the copy).
     Sensitive {
         files: usize,
@@ -199,7 +206,7 @@ pub fn run(
         keep_zone_identifier: opts.keep_zone_identifier,
     };
     let next = AtomicUsize::new(0);
-    let cancel = &*opts.cancel;
+    let flow = &opts.flow;
     let (tx, rx) = mpsc::channel::<FileEntry>();
     let mut write_err = None;
     std::thread::scope(|scope| {
@@ -209,10 +216,10 @@ pub fn run(
             scope.spawn(move || {
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
-                    if i >= todo.len() || cancel.load(Ordering::Relaxed) {
+                    if i >= todo.len() || !flow.proceed() {
                         break;
                     }
-                    let Some(e) = copy_one(src, todo[i], job, fc, cancel) else {
+                    let Some(e) = copy_one(src, todo[i], job, fc, flow) else {
                         break;
                     };
                     if tx.send(e).is_err() {
@@ -222,12 +229,20 @@ pub fn run(
             });
         }
         drop(tx);
-        for e in rx {
+        loop {
+            let e = match rx.recv_timeout(TICK) {
+                Ok(e) => e,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    progress(Event::Tick);
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             if write_err.is_none() {
                 if let Err(err) = writer.record(&e) {
                     // Target gone (NAS dropout): stop cleanly; resume later.
                     write_err = Some(err);
-                    cancel.store(true, Ordering::Relaxed);
+                    flow.stop();
                 }
             }
             progress(Event::File(&e));
@@ -240,7 +255,7 @@ pub fn run(
     }
 
     files.sort_by(|a, b| a.path.cmp(&b.path));
-    let complete = !cancel.load(Ordering::Relaxed);
+    let complete = !flow.cancelled();
     // Rebuilt in full on every completed run (small; needs the passphrase).
     let sensitive = match pass.filter(|_| complete) {
         Some(p) => {
@@ -292,6 +307,10 @@ pub fn run(
     super::manifest::write_atomic(
         &job.dir.join("report.txt"),
         super::report::text(&manifest).as_bytes(),
+    )?;
+    super::manifest::write_atomic(
+        &job.dir.join("report.html"),
+        super::report_html::html(&manifest).as_bytes(),
     )?;
     Ok(manifest)
 }

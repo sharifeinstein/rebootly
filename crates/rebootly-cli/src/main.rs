@@ -1,11 +1,13 @@
 //! `rebootly` command-line interface (thin layer over rebootly-core).
 
 mod backup;
+mod backup_text;
 mod pack;
 mod render;
 mod restore;
 mod sensitive;
 mod source;
+mod tui;
 mod undo;
 
 use std::path::PathBuf;
@@ -29,12 +31,15 @@ pub const VERSION: &str = concat!(
     about = "Portable PC migration and backup"
 )]
 struct Cli {
+    /// Without a command, the interactive screens open.
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// The interactive screens (the default without a command).
+    Tui(tui::TuiArgs),
     /// Show users and their real folder paths for a Windows installation.
     Inspect {
         /// Volume root containing `Windows\` (or the Windows directory itself).
@@ -75,7 +80,11 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> anyhow::Result<u8> {
-    match cli.cmd {
+    let Some(cmd) = cli.cmd else {
+        return tui::run(tui::TuiArgs::default());
+    };
+    match cmd {
+        Cmd::Tui(args) => tui::run(args),
         Cmd::Inspect {
             windows_root,
             live,

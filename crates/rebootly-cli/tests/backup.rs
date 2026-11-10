@@ -170,3 +170,93 @@ fn sensitive_backup_then_extract() {
     assert_eq!(code, 1);
     assert!(err.contains("wrong passphrase"), "{err}");
 }
+
+#[test]
+fn save_profile_then_run_it() {
+    let t = tempfile::tempdir().unwrap();
+    let usb = t.path().join("usb");
+    let usb_s = usb.to_str().unwrap();
+    // Saving needs no source and copies nothing.
+    let (code, out, err) = rebootly(&[
+        "backup",
+        "--target",
+        usb_s,
+        "--folder",
+        "Documents",
+        "--user",
+        "Alice",
+        "--no-packs",
+        "--save-profile",
+        "docs only",
+    ]);
+    assert_eq!(code, 0, "{err}");
+    let prof = PathBuf::from(out.trim());
+    assert!(prof.ends_with("rebootly-profiles/docs_only.json"));
+    assert_eq!(std::fs::read_dir(&usb).unwrap().count(), 1);
+
+    let root = fixture();
+    let (code, out, err) = rebootly(&[
+        "backup",
+        "--windows-root",
+        root.to_str().unwrap(),
+        "--target",
+        usb_s,
+        "--profile",
+        prof.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains("Job profile: docs only"), "{err}");
+    let m: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(PathBuf::from(out.trim()).join("manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let paths: Vec<&str> = m["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.starts_with("users/Alice/folders/Documents/"))
+    );
+    assert!(
+        !paths
+            .iter()
+            .any(|p| p.starts_with("users/bob/") || p.contains("/packs/"))
+    );
+    assert!(PathBuf::from(out.trim()).join("report.html").is_file());
+}
+
+#[test]
+fn full_takes_public_and_root_folders() {
+    let t = tempfile::tempdir().unwrap();
+    let root = fixture();
+    let pass = t.path().join("pass.txt");
+    std::fs::write(&pass, "correct horse battery\n").unwrap();
+    let usb = t.path().join("usb");
+    let (code, out, err) = rebootly(&[
+        "backup",
+        "--windows-root",
+        root.to_str().unwrap(),
+        "--target",
+        usb.to_str().unwrap(),
+        "--full",
+        "--passphrase-file",
+        pass.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{err}");
+    let m: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(PathBuf::from(out.trim()).join("manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let paths: Vec<&str> = m["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert!(paths.iter().any(|p| p.starts_with("custom/Public/")));
+    assert!(paths.iter().any(|p| p.starts_with("custom/Projects/")));
+}

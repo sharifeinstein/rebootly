@@ -33,6 +33,21 @@ pub struct Awake {
 }
 
 impl Awake {
+    /// Like `new`, without the battery warning on stderr (the TUI shows it).
+    pub fn quiet(live_mode: bool) -> Self {
+        #[cfg(windows)]
+        {
+            Awake {
+                _guard: live_mode.then(rebootly_win::SleepGuard::new),
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = live_mode;
+            Awake {}
+        }
+    }
+
     pub fn new(live_mode: bool) -> Self {
         #[cfg(windows)]
         {

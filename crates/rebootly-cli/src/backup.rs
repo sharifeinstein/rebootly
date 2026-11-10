@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use rebootly_core::backup::exclude::{CloudFiles, ExcludeOptions};
-use rebootly_core::backup::preflight::{Preflight, gib};
-use rebootly_core::backup::{self, Event, Job, PlanOptions, RunOptions};
+use rebootly_core::backup::exclude::CloudFiles;
+use rebootly_core::backup::profile::{self, JobProfile, Mode, Selection};
+use rebootly_core::backup::{self, Event, Job, RunOptions};
 
 #[derive(Clone, Copy, clap::ValueEnum)]
 pub enum CloudArg {
@@ -21,7 +21,7 @@ pub struct BackupArgs {
     #[arg(
         long,
         value_name = "PATH",
-        required_unless_present = "live",
+        required_unless_present_any = ["live", "save_profile"],
         conflicts_with = "live"
     )]
     pub windows_root: Option<PathBuf>,
@@ -72,7 +72,8 @@ pub struct BackupArgs {
     #[arg(long)]
     pub sensitive: bool,
     /// Passphrase for `--sensitive`, read from the first line of this file.
-    #[arg(long, value_name = "FILE", requires = "sensitive")]
+    /// (Implies --sensitive.)
+    #[arg(long, value_name = "FILE")]
     pub passphrase_file: Option<PathBuf>,
     /// Leave out system items (hosts, scheduled tasks, Wi-Fi, apps.json).
     #[arg(long)]
@@ -90,39 +91,48 @@ pub struct BackupArgs {
     /// Run despite pre-flight blockers (never overrides the source-disk check).
     #[arg(long)]
     pub force: bool,
+    /// Everything detected, like the TUI's Full mode: also Public, every
+    /// drive-root folder, and keys/credentials (implies --sensitive).
+    #[arg(long, conflicts_with_all = ["profile", "folders", "pack_ids", "no_packs", "no_system"])]
+    pub full: bool,
+    /// Use the choices of a saved job profile (a TUI "save as job profile",
+    /// or --save-profile): users, folders, packs, extras.
+    #[arg(long, value_name = "FILE", conflicts_with_all = [
+        "users", "folders", "pack_ids", "no_packs", "public", "root_folders", "custom",
+        "no_system", "skip_dev_artifacts",
+    ])]
+    pub profile: Option<PathBuf>,
+    /// Save these choices as a job profile in the target's
+    /// `rebootly-profiles/` folder, and stop (nothing is copied).
+    #[arg(
+        long,
+        value_name = "NAME",
+        requires = "target",
+        conflicts_with = "profile"
+    )]
+    pub save_profile: Option<String>,
 }
 
-fn print_preflight(p: &Preflight) {
-    eprintln!("Pre-flight:");
-    for f in &p.folders {
-        eprintln!(
-            "  {:<22} {:>7} files  {:>12}",
-            f.folder,
-            f.files,
-            gib(f.bytes)
-        );
+fn selection(a: &BackupArgs) -> anyhow::Result<Selection> {
+    if let Some(p) = &a.profile {
+        let job = profile::load(p).with_context(|| format!("reading {}", p.display()))?;
+        eprintln!("Job profile: {}", job.name);
+        return Ok(job.selection);
     }
-    eprintln!(
-        "  {:<22} {:>7} files  {:>12}",
-        "Total",
-        p.total_files,
-        gib(p.total_bytes)
-    );
-    if p.resumed_bytes > 0 {
-        eprintln!("  already on target:     {}", gib(p.resumed_bytes));
+    let mut sel = Selection::new(if a.full { Mode::Full } else { Mode::Quick });
+    sel.users = a.users.clone();
+    sel.folders = a.folders.clone();
+    sel.packs = (a.no_packs || !a.pack_ids.is_empty()).then(|| a.pack_ids.clone());
+    sel.public |= a.public;
+    sel.root_folders = a.root_folders.clone();
+    sel.custom = a.custom.clone();
+    sel.sensitive |= a.sensitive || a.passphrase_file.is_some();
+    sel.system = !a.no_system;
+    sel.skip_dev_artifacts = a.skip_dev_artifacts;
+    if sel != Selection::new(sel.mode) {
+        sel.mode = Mode::Custom;
     }
-    let free = p.target_free.map_or("unknown".into(), gib);
-    eprintln!(
-        "  target: {} free, filesystem {}",
-        free,
-        p.target_fs.as_deref().unwrap_or("unknown")
-    );
-    for w in &p.warnings {
-        eprintln!("  ! {w}");
-    }
-    for b in &p.blockers {
-        eprintln!("  X {b}");
-    }
+    Ok(sel)
 }
 
 /// Returns the process exit code: 0 all copied, 2 finished with failures.
@@ -133,32 +143,36 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
             "--cloud-files hydrate works only with --live (offline, the files can't be downloaded)"
         );
     }
+    let mut sel = selection(&a)?;
+    if let Some(name) = &a.save_profile {
+        let job = JobProfile {
+            schema: profile::PROFILE_SCHEMA,
+            name: name.clone(),
+            selection: sel,
+            jobs: (a.jobs != 4).then_some(a.jobs),
+        };
+        let target = a.target.as_deref().expect("clap: requires target");
+        let path = profile::save(target, &job).context("saving the job profile")?;
+        println!("{}", path.display());
+        eprintln!(
+            "Saved; run it with: rebootly backup --profile \"{}\" --target …",
+            path.display()
+        );
+        return Ok(0);
+    }
     let src = crate::source::open(a.live, a.windows_root.as_ref())?;
     let src = src.as_ref();
-    let packs = if a.no_packs {
-        Vec::new()
-    } else {
-        crate::pack::load(a.packs_dir.as_deref(), &a.pack_ids)?
+    // Validates --pack ids; the selection then filters by id.
+    let packs = crate::pack::load(a.packs_dir.as_deref(), &a.pack_ids)?;
+    sel.resolve(&backup::custom::root_folders(src.source_root()));
+    let mut opts = sel.plan_options(&packs);
+    opts.exclude.cloud_files = match a.cloud_files {
+        CloudArg::Skip => CloudFiles::Skip,
+        CloudArg::Hydrate => CloudFiles::Hydrate,
     };
-    let opts = PlanOptions {
-        users: a.users,
-        folders: a.folders,
-        exclude: ExcludeOptions {
-            dev_artifacts: a.skip_dev_artifacts,
-            cloud_files: match a.cloud_files {
-                CloudArg::Skip => CloudFiles::Skip,
-                CloudArg::Hydrate => CloudFiles::Hydrate,
-            },
-        },
-        packs,
-        public: a.public,
-        root_folders: a.root_folders,
-        custom: a.custom,
-        sensitive_bundle: a.sensitive,
-        no_system: a.no_system,
-    };
+    let sensitive = sel.sensitive;
     let plan = backup::plan(src, &opts)?;
-    print_detected(&plan);
+    crate::backup_text::print_detected(&plan);
     if plan.users.is_empty() {
         bail!("no matching users to back up");
     }
@@ -175,7 +189,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         nearest_existing(target)
     };
     let pre = backup::preflight(&plan, &probe, resumed.as_ref(), target_fs(&probe));
-    print_preflight(&pre);
+    crate::backup_text::print_preflight(&pre);
     if a.preflight {
         return Ok(0);
     }
@@ -191,7 +205,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         );
     }
 
-    let passphrase = (a.sensitive && !plan.sensitive.is_empty())
+    let passphrase = (sensitive && !plan.sensitive.is_empty())
         .then(|| crate::sensitive::passphrase(a.passphrase_file.as_deref(), true))
         .transpose()?;
     let job = match resumed {
@@ -219,6 +233,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
                 eprintln!("Resuming: {already_done} file(s) already copied");
             }
         }
+        Event::Tick => {}
         Event::Sensitive { files } => {
             eprintln!("\nEncrypting {files} sensitive file(s) into sensitive.age…");
         }
@@ -254,43 +269,6 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         );
     }
     Ok(if failed > 0 { 2 } else { 0 })
-}
-
-fn print_detected(plan: &backup::Plan) {
-    let mut by_user: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
-    for p in &plan.packs {
-        by_user.entry(&p.user).or_default().push(&p.id);
-    }
-    if !by_user.is_empty() {
-        eprintln!("App packs:");
-        for (u, ids) in by_user {
-            eprintln!("  {u:<20} {}", ids.join(", "));
-        }
-    }
-    if !plan.sensitive.is_empty() {
-        eprintln!(
-            "Sensitive: {} file(s) (keys, credentials) go into the encrypted sensitive.age",
-            plan.sensitive.len()
-        );
-    } else if !plan.sensitive_jobs.is_empty() {
-        eprintln!(
-            "Sensitive: {} key/credential location(s) found and left out; add --sensitive to \
-             store them encrypted",
-            plan.sensitive_jobs.len()
-        );
-    }
-    let unused: Vec<&str> = plan
-        .offered_root_folders
-        .iter()
-        .filter(|n| !plan.custom.iter().any(|c| c.label.eq_ignore_ascii_case(n)))
-        .map(String::as_str)
-        .collect();
-    if !unused.is_empty() {
-        eprintln!(
-            "Folders at the drive root (add with --root-folder NAME): {}",
-            unused.join(", ")
-        );
-    }
 }
 
 fn parse_custom(s: &str) -> Result<(String, String), String> {

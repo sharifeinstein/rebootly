@@ -8,17 +8,22 @@ pub mod custom;
 pub mod exclude;
 pub mod extras;
 pub mod filecopy;
+pub mod flow;
 pub mod manifest;
 pub mod plan;
 pub mod preflight;
+pub mod profile;
 pub mod report;
+pub mod report_html;
 pub mod run;
 pub mod sensitive;
 pub mod state;
+pub mod summary;
 pub mod system;
 pub mod time;
 pub mod walk;
 
+pub use flow::Flow;
 pub use plan::{Plan, PlanOptions, plan};
 pub use run::{Event, Job, RunOptions, run};
 

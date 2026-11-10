@@ -21,13 +21,14 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M6 — TUI (not started)
-Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DESKTOP-D3P1F40`, build `556e2fc`): Picard → Riker restore (elevated, signed in as Riker) of a live backup with `--sensitive`: 24 changes, 0 failed, 21 files verified; 75 HKCU keys exported for undo then imported; the PFX imported with the bundle password; power plan recognised as already active; Explorer restarted; Riker's own shortcuts, Quick Access and the SID-named search connector left alone. `rebootly undo` put everything back (21 steps, 0 failed): files deleted/restored, 8 top-level keys re-imported, certificate removed. Same-user restore (Picard → Picard) reported everything as already there. Fixed on the way (all found on Windows): undo copy flushed via a read-only handle (os error 5), browser packs too broad (v2/v3 allowlists), secret SQLite sidecars, duplicate power plans, certificates imported for the wrong user (now `OWNER.txt`), shortcuts/binary files tied to the old profile, `--version` with the commit, `undo --list` showing undone runs.
+Current milestone: M6 — TUI implemented and tested in the cloud; Windows run by the user pending
+Last session: 2026-11-10 — M6 built: `rebootly` with no command opens the TUI (ratatui 0.29). Start menu (Back up / Restore / Run a saved job), Rescue flow in WinPE/Linux (starts at "find Windows"), source → accounts → Quick/Full/Custom (tree with ticks and sizes) → target (drives get a `Rebootly\` folder) → plain-language pre-flight ("47.2 GiB in 9,812 files, about 38 min to this drive, 12 apps to reinstall, 3 things to do by hand", from a 32 MiB write test) with live-mode reminders → progress with ETA, last file, pause (p) and safe stop (c, y) → done screen with tick-box checklist and `report.html`. Restore: backups found on the drives (newest first) → backup user → options as ticks → plan preview → dry run (d) or restore (Enter, y), conflicts and "apps done?" asked in a box → result + checklist. Job profiles (`s` on pre-flight; `--profile`, `--save-profile`, `--full` in the CLI). 147 tests (8 whole-flow TUI tests with scripted keys), clippy clean on Linux and the Windows type-check; checked in a real pty too.
 
 ## Next step
-1. Start M6 (TUI, SPEC §11) in a fresh chat: this one covered M5 and a long test loop. Read only §11 first.
-2. Still untested for real (need hardware/software the VM lacks): `winget import` and `winget export` (App Installer), Wi-Fi export/`netsh wlan add profile` (Wi-Fi adapter), `--tasks` (schtasks /create from XML), `--cloud-files hydrate` (OneDrive signed in). Worth one pass on a real PC before M9.
-3. Open from M4: the hidden passphrase prompt received fewer than 8 characters twice on the VM (paste through the VM console?); `--passphrase-file` works.
+1. **User, on Windows (elevated PowerShell in `D:\Projects\rebootly`):** `git log -1` (should show the M6 commit), `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`, then `.\target\release\rebootly.exe` and walk through: Back up → This PC → Quick → a USB stick or folder (Type a folder…) → check the pre-flight sentence, pause/resume, stop and continue (r), the done checklist and `report.html` in a browser; then Restore on the VM (Picard → Riker) with a dry run first. Paste back anything odd (layout, keys, wording, errors). Windows Terminal and the old console (conhost) both matter: WinPE only has conhost.
+2. After that check, mark M6 done and start M7 (Offline: WinPE detection, BitLocker unlock, Linux ro mount, volume discovery; SPEC §3.3, §7) in a fresh chat. The Rescue flow's BitLocker step slots into `rebootly-tui/src/backup/source.rs`.
+3. Still untested for real (from M5): `winget import/export`, Wi-Fi export/`netsh wlan add profile`, `--tasks`, `--cloud-files hydrate`. Worth one pass on a real PC before M9.
+4. Open from M4: the hidden CLI passphrase prompt received fewer than 8 characters twice on the VM; the TUI passphrase field shows a dot per character and says how many arrived, which may show what happens.
 
 ## Milestones
 - [x] M1 Core resolver
@@ -35,7 +36,7 @@ Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DES
 - [x] M3 Packs
 - [x] M4 Live Windows
 - [x] M5 Restore
-- [ ] M6 TUI
+- [ ] M6 TUI (implemented; Windows check pending)
 - [ ] M7 Offline (WinPE/Linux, BitLocker)
 - [ ] M8 Rescue USB (Ventoy, Alpine, WinPE scripts)
 - [ ] M9 Hardening & release
@@ -105,6 +106,16 @@ Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DES
 
 - 2026-11-10: `rebootly --version` (and the first line of backup/restore/undo output) shows the commit it was built from, read from `.git` by `crates/rebootly-cli/build.rs` (no `git` program needed; `unknown` outside a checkout). Added after a stale exe was tested on the VM.
 
+- 2026-11-10 (M6): The TUI is a library (`rebootly-tui`) behind a `Platform` trait that the CLI implements (live source, drives, packs, restore target, keep-awake); tests use a fake over the fixtures and a `ScriptUi` (scripted keys, `TestBackend`). `rebootly` with no command opens it; `rebootly tui [--simulate-root DIR] [--drive DIR] [--packs-dir DIR]` for previews. No terminal → error pointing to `--help`.
+- 2026-11-10 (M6): Single-threaded UI: long steps run inside a screen's key handler and draw through `Ctx::ui`. The backup sends `Event::Tick` every 200 ms while no file finishes, so big files don't freeze the screen. `RunOptions::cancel` became `RunOptions::flow: Flow` (cancel, pause, live byte counter); pause is checked between 1 MiB reads, so it also pauses inside a large file, and `stop()` wakes paused workers.
+- 2026-11-10 (M6): **Quick** = Tier 1 + detected packs + Tier 4 system items (SPEC said Tier 1 + packs; the system items are small and carry the app list that the summary's "N apps to reinstall" comes from). **Full** = Quick + `Users\Public` + every drive-root folder + the encrypted bundle (asks for a passphrase). **Custom** sizes come from a Full plan of the chosen accounts; registry hives are always included. SPEC §11 updated.
+- 2026-11-10 (M6): Mode/choices are `backup::profile::Selection` in core (`Mode`, `plan_options`, `resolve` adds drive-root folders in Full mode); the CLI builds the same `Selection` from its flags. Job profiles: `<target>/rebootly-profiles/<name>.json` (schema 1). CLI: `--profile FILE`, `--save-profile NAME` (saves and stops; needs only `--target`), `--full`. `--passphrase-file` now implies `--sensitive` (needed with `--full`/`--profile`).
+- 2026-11-10 (M6): A drive chosen as target gets a `Rebootly\` folder (backups and profiles in it); a typed folder is used as is. Restore searches each drive and its `Rebootly\` up to 3 levels for `manifest.json` (`restore::find`), never inside a backup or system folders; newest finished first.
+- 2026-11-10 (M6): Time estimate = 32 MiB write+fsync test on the target (`backup::summary::speed_probe`, file deleted) plus 2 ms per file. The progress ETA uses the average rate so far, not counting pauses.
+- 2026-11-10 (M6): `report.html` is written beside `report.txt` on every run (self-contained, no scripts; checklist with tick boxes, print-friendly).
+- 2026-11-10 (M6): The pre-flight screen offers to continue an unfinished backup of the same machine on that target (`r`); with keys/credentials the resume goes through the CLI (`--resume --sensitive`) for now. The TUI asks for the passphrase twice and shows a dot per character.
+- 2026-11-10 (M6): Accounts are listed by name (case-insensitive) on the backup and restore-user screens. All accounts ticked = "all users" in the selection (so a saved job works on other PCs).
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
@@ -123,7 +134,6 @@ Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DES
 - `rebootly inspect` doesn't show packs yet; `backup --preflight` does.
 - Target filesystem type: Linux (/proc/self/mountinfo) and live Windows (`GetVolumeInformationW`, passed in by the CLI). WinPE uses the Windows binary, so it is covered too once tested.
 - Large backups: the manifest holds every file in memory and is written as one JSON file (~200 B per file). Fine up to a few hundred thousand files; consider streaming it later.
-- No `report.html` yet (M6), only `report.txt`.
 - SMART check and the `ddrescue` suggestion (SPEC §3.5) aren't implemented; they need platform code (M4/M7).
 - `cargo-deny` config not added yet (M9, or earlier once there are more deps).
 
@@ -132,6 +142,9 @@ Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DES
 - Undo can't put back a Wi-Fi profile or certificate that the restore *replaced* (existing ones are never replaced, so this shouldn't happen).
 - Registry undo re-imports the exported keys: old values come back, but values the restore *added* under an existing key stay (reg import never deletes). Deleting and re-creating keys like `HKCU\Control Panel` would be riskier than leaving a few extra values.
 - `Searches` and Links shortcuts from the old account are skipped when a same-named one exists; new ones with old-profile paths in Tier 1 folders are still restored (they're the user's own files).
+- Not done from SPEC §11 yet: rotating logs on the target with redaction and `--debug`; `verify` (re-hash a backup) and `compare` (check the new PC against the manifest) commands — both were listed under M5 in §14 and are still missing; a completion notification beyond the terminal bell; Undo in the TUI (CLI `rebootly undo` only).
+- TUI: Custom mode plans twice (Full plan for sizes, then the chosen plan), so the folders are walked twice. Drives on Windows are every existing drive letter but the system drive (no removable/fixed check yet). The Rescue flow has no BitLocker step yet (M7); locked volumes simply aren't listed.
+- TUI restore conflicts: the default policies never ask (keep-both for your files, overwrite for settings); the "ask" box appears only with an `ask` policy, which the TUI doesn't offer yet.
 
 ## Crate map (one line per module: what it does)
 - `rebootly-core::hive` — read-only regf parser: keys, values, case-insensitive lookup, bounds-checked (`mod.rs`, `cell.rs`, `value.rs`).
@@ -171,4 +184,8 @@ Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DES
 - `rebootly-core::restore` — restore engine (SPEC §5): `fit` (files that don't fit the new account), `input` (manifest view, decrypted bundle in a private temp dir), `target` (new PC/user, path mapping, `--simulate-root`), `map` (backup file → destination), `plan` + `regplan` + `notes` + `system` (phase 1: files, `.reg` checks, Tier 4 actions, manual steps), `run` + `phases` + `files` (phases 2–9), `conflict` (policies, `(migrated)` names), `rewrite` (profile paths in text), `regcheck` (.reg allowlist check), `merge` (hosts, phonebooks), `undo` (journal, `undo`, `list`), `host` (`RestoreHost`, `SysOp`, `SimHost`), `report` (plan/result text).
 - `rebootly-win::live::restore` (cfg(windows)) — `live_target()` (current user's known folders, env, build) and `WinRestoreHost` (reg, netsh, powercfg, PowerShell certificates, schtasks, winget, tasklist, streams); `attrs` (hidden/system attributes).
 - `rebootly-cli` also: `restore.rs` (`rebootly restore`, prompts), `undo.rs` (`rebootly undo`).
-- `rebootly-linux`, `rebootly-tui` — placeholders for M7, M6.
+- `rebootly-core::backup::{flow,summary,profile,report_html}` — run control (cancel/pause/bytes); plain-language pre-flight and speed probe; Quick/Full/Custom `Selection` and job profiles; printable report.
+- `rebootly-core::restore::find` — find backups under drives (newest first).
+- `rebootly-tui` — `platform` (trait the CLI implements), `ui` (terminal / scripted test UI, chrome, popup), `widgets` (menu, checkbox tree, text field), `app` (screen stack, main loop), `home` (start menu, saved jobs), `backup/` (`source` incl. Rescue, `users`, `mode`, `custom`, `target`, `preflight`, `progress`, `done`), `restore/` (`pick`, `options`, `plan`, `run`), `checklist`, `textview`. Flow tests in `tests/flows.rs`.
+- `rebootly-cli` also: `tui.rs` (`CliPlatform`, `rebootly tui`), `backup_text.rs` (pre-flight/pack text output).
+- `rebootly-linux` — placeholder for M7.

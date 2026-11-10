@@ -8,10 +8,10 @@
 //! retried once at once from a consistent snapshot (VSS in live mode), via
 //! the `open(true)` call.
 
+use super::flow::Flow;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 use sha2::{Digest, Sha256};
@@ -84,7 +84,7 @@ fn copy_once(
     snapshot: bool,
     dest: &Path,
     mtime: Option<SystemTime>,
-    cancel: &AtomicBool,
+    flow: &Flow,
 ) -> io::Result<(String, u64)> {
     let mut src = open(snapshot)?;
     if let Some(dir) = dest.parent() {
@@ -96,7 +96,7 @@ fn copy_once(
     let mut buf = vec![0u8; BUF];
     let mut total = 0u64;
     loop {
-        if cancel.load(Ordering::Relaxed) {
+        if !flow.proceed() {
             return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
         }
         let n = match src.read(&mut buf) {
@@ -108,6 +108,7 @@ fn copy_once(
         hasher.update(&buf[..n]);
         out.write_all(&buf[..n])?;
         total += n as u64;
+        flow.add_bytes(n as u64);
     }
     if let Some(t) = mtime {
         out.set_modified(t)?;
@@ -124,7 +125,7 @@ pub fn copy_file(
     dest: &Path,
     mtime: Option<SystemTime>,
     policy: RetryPolicy,
-    cancel: &AtomicBool,
+    flow: &Flow,
 ) -> Result<Copied, CopyFailed> {
     let attempts = policy.attempts.max(1);
     let mut last = String::new();
@@ -135,7 +136,7 @@ pub fn copy_file(
         if wait {
             std::thread::sleep(policy.delay(attempt - 1));
         }
-        match copy_once(open, snapshot, dest, mtime, cancel) {
+        match copy_once(open, snapshot, dest, mtime, flow) {
             Ok((sha256, bytes)) => {
                 return Ok(Copied {
                     sha256,
@@ -197,7 +198,13 @@ pub fn hash_file(path: &Path) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicU32;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    fn cancelled() -> Flow {
+        let f = Flow::default();
+        f.stop();
+        f
+    }
 
     const NO_WAIT: RetryPolicy = RetryPolicy {
         attempts: 3,
@@ -213,7 +220,7 @@ mod tests {
         let when = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
         let dest = t.path().join("out/deep/src.bin");
         let open = |_| File::open(&src);
-        let ok = copy_file(&open, &dest, Some(when), NO_WAIT, &AtomicBool::new(false)).unwrap();
+        let ok = copy_file(&open, &dest, Some(when), NO_WAIT, &Flow::default()).unwrap();
         // SHA-256("abc")
         assert_eq!(
             ok.sha256,
@@ -244,7 +251,7 @@ mod tests {
             &t.path().join("d1"),
             None,
             NO_WAIT,
-            &AtomicBool::new(false),
+            &Flow::default(),
         );
         assert_eq!(ok.unwrap().attempts, 3);
 
@@ -254,7 +261,7 @@ mod tests {
             &t.path().join("d2"),
             None,
             NO_WAIT,
-            &AtomicBool::new(false),
+            &Flow::default(),
         )
         .unwrap_err();
         assert_eq!(
@@ -274,7 +281,7 @@ mod tests {
         std::fs::write(&src, b"data").unwrap();
         let dest = t.path().join("d");
         let open = |_| File::open(&src);
-        let err = copy_file(&open, &dest, None, NO_WAIT, &AtomicBool::new(true)).unwrap_err();
+        let err = copy_file(&open, &dest, None, NO_WAIT, &cancelled()).unwrap_err();
         assert_eq!(err.reason, "cancelled");
         assert!(!dest.exists() && !partial_path(&dest).exists());
     }
@@ -286,14 +293,7 @@ mod tests {
         std::fs::write(&snap, b"abc").unwrap();
         let busy = || io::Error::from(io::ErrorKind::ResourceBusy);
         let open = |s: bool| if s { File::open(&snap) } else { Err(busy()) };
-        let ok = copy_file(
-            &open,
-            &t.path().join("d"),
-            None,
-            NO_WAIT,
-            &AtomicBool::new(false),
-        )
-        .unwrap();
+        let ok = copy_file(&open, &t.path().join("d"), None, NO_WAIT, &Flow::default()).unwrap();
         assert!(ok.from_snapshot);
         assert_eq!(ok.attempts, 1);
 
@@ -308,14 +308,8 @@ mod tests {
                 Err(busy())
             }
         };
-        let err = copy_file(
-            &none,
-            &t.path().join("e"),
-            None,
-            NO_WAIT,
-            &AtomicBool::new(false),
-        )
-        .unwrap_err();
+        let err =
+            copy_file(&none, &t.path().join("e"), None, NO_WAIT, &Flow::default()).unwrap_err();
         assert_eq!(
             (err.reason.as_str(), err.attempts),
             ("close the program", 1)
