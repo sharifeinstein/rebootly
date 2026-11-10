@@ -18,6 +18,16 @@ pub fn passphrase(file: Option<&Path>, confirm: bool) -> anyhow::Result<Passphra
         s
     } else {
         let a = rpassword::prompt_password("Passphrase for the sensitive bundle: ")?;
+        // Say what arrived (length only), so "typed too few" can be told
+        // apart from a console that loses input (e.g. pasting into a VM).
+        let n = a.chars().count();
+        if n < rebootly_core::backup::sensitive::MIN_PASSPHRASE {
+            bail!(
+                "the passphrase must be at least {} characters (the prompt received {n}; \
+                 if you pasted it, type it instead, or use --passphrase-file)",
+                rebootly_core::backup::sensitive::MIN_PASSPHRASE
+            );
+        }
         if confirm {
             let b = rpassword::prompt_password("Same passphrase again: ")?;
             if a != b {
