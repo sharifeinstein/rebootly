@@ -90,7 +90,14 @@ pub fn name_list(names: &[String], max: usize) -> String {
     s
 }
 
-pub fn plan_system(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptions) -> SystemPlan {
+/// `user_sid`: SID of the backup user being restored (certificates are
+/// imported only for their owner).
+pub fn plan_system(
+    backup: &Backup,
+    bundle: Option<&Bundle>,
+    opts: &RestoreOptions,
+    user_sid: &str,
+) -> SystemPlan {
     let mut p = SystemPlan::default();
     let has = |rel: &str| backup.file(rel).and_then(|_| backup.local(rel));
     let read_json = |rel: &str| -> Option<serde_json::Value> {
@@ -174,7 +181,7 @@ pub fn plan_system(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptio
         }
     }
     tasks(backup, opts, &mut p);
-    sensitive(backup, bundle, opts, &mut p);
+    sensitive(backup, bundle, opts, user_sid, &mut p);
     p
 }
 
@@ -261,7 +268,39 @@ pub fn wifi_name(xml: &[u8]) -> Option<String> {
     })
 }
 
-fn sensitive(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptions, p: &mut SystemPlan) {
+/// Certificates are exported only for the user who ran the backup
+/// (`system/certs/OWNER.txt`: SID, then name). `Err`: why they aren't
+/// imported for `user_sid`.
+pub fn cert_owner_check(owner: Option<&str>, user_sid: &str) -> Result<(), String> {
+    let Some(text) = owner else {
+        return Err(
+            "this backup doesn't record whose certificates they are (made by an older \
+             Rebootly), so they weren't imported. If they're yours, get the .pfx \
+                    files and PFX-PASSWORD.txt with `rebootly sensitive extract` and import \
+                    them in certmgr.msc"
+                .into(),
+        );
+    };
+    let mut lines = text.lines().map(str::trim);
+    let sid = lines.next().unwrap_or("");
+    let name = lines.next().filter(|n| !n.is_empty()).unwrap_or(sid);
+    if sid.eq_ignore_ascii_case(user_sid) {
+        Ok(())
+    } else {
+        Err(format!(
+            "they belong to {name}, who made the backup; restore that user (--user, signed \
+             in as the user they're for) to import them"
+        ))
+    }
+}
+
+fn sensitive(
+    backup: &Backup,
+    bundle: Option<&Bundle>,
+    opts: &RestoreOptions,
+    user_sid: &str,
+    p: &mut SystemPlan,
+) {
     let Some(rec) = &backup.manifest.sensitive else {
         return;
     };
@@ -280,6 +319,12 @@ fn sensitive(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptions, p:
     let password = b
         .local("system/certs/PFX-PASSWORD.txt")
         .filter(|p| p.is_file());
+    let owner = b
+        .local("system/certs/OWNER.txt")
+        .and_then(|f| std::fs::read(f).ok())
+        .map(|x| String::from_utf8_lossy(&x).into_owned());
+    let certs_ok = cert_owner_check(owner.as_deref(), user_sid);
+    let mut certs_skipped = Vec::new();
     let mut offline_wifi = Vec::new();
     for f in &b.index.files {
         let Some(local) = b.local(&f.path) else {
@@ -303,6 +348,10 @@ fn sensitive(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptions, p:
             if (is_pfx || name.ends_with(".cer")) && opts.system {
                 let stem = f.path.rsplit('/').next().unwrap_or("");
                 let thumbprint = stem.rsplit_once('.').map_or(stem, |s| s.0).to_owned();
+                if certs_ok.is_err() {
+                    certs_skipped.push(thumbprint);
+                    continue;
+                }
                 p.actions.push(SysAction::Cert {
                     file: local,
                     thumbprint,
@@ -310,6 +359,12 @@ fn sensitive(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptions, p:
                 });
             }
         }
+    }
+    if let (Err(why), false) = (&certs_ok, certs_skipped.is_empty()) {
+        p.manual.push(step(
+            "Certificates not imported",
+            format!("{}: {why}.", name_list(&certs_skipped, 10)),
+        ));
     }
     if !offline_wifi.is_empty() {
         p.manual.push(step(
@@ -319,5 +374,19 @@ fn sensitive(backup: &Backup, bundle: Option<&Bundle>, opts: &RestoreOptions, p:
                 name_list(&offline_wifi, 20)
             ),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cert_owner_check;
+
+    #[test]
+    fn certificates_only_for_their_owner() {
+        let owner = "S-1-5-21-1-2-3-1001\r\nPicard\r\n";
+        assert!(cert_owner_check(Some(owner), "s-1-5-21-1-2-3-1001").is_ok());
+        let e = cert_owner_check(Some(owner), "S-1-5-21-1-2-3-1002").unwrap_err();
+        assert!(e.contains("belong to Picard"), "{e}");
+        assert!(cert_owner_check(None, "S-1-5-21-1-2-3-1001").is_err());
     }
 }

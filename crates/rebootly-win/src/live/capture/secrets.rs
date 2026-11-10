@@ -122,5 +122,19 @@ pub fn certificates(dir: &Path, out: &mut Captures) {
                 true,
             );
         }
+        // Whose they are: the restore imports them only into that user.
+        if let Ok(sid) = super::super::token::current_user_sid() {
+            let user = std::env::var("USERNAME").unwrap_or_default();
+            let ofile = cdir.join("OWNER.txt");
+            if std::fs::write(&ofile, format!("{sid}\r\n{user}\r\n")).is_ok() {
+                push(
+                    out,
+                    "system/certs/OWNER.txt",
+                    ofile,
+                    "certificate owner",
+                    true,
+                );
+            }
+        }
     }
 }

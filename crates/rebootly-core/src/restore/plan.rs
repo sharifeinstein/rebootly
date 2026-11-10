@@ -177,7 +177,7 @@ pub fn plan(
         opts,
     };
     let mapped = map_files(&ctx, bundle);
-    let sys = plan_system(backup, bundle, opts);
+    let sys = plan_system(backup, bundle, opts, &user.sid);
     let mut warnings = Vec::new();
     let mut blockers = Vec::new();
     let mut skipped = mapped.skipped;

@@ -104,6 +104,8 @@ Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` 
 - 2026-11-10 (first VM dry run): chrome and edge packs v2 are allowlists (`include:` per profile: Bookmarks, Preferences, History, Favicons, Top Sites, Shortcuts, Web Data, Custom Dictionary, extensions and their settings; Edge also Collections). v1 copied nearly all of `User Data`: LOCK/LOG files, metrics, SmartScreen/CRL caches, components and SQLite journals out of step with their databases. Secret files' SQLite sidecars (`Cookies-journal`, `Login Data-journal`, `-wal`, `-shm`) are now Secrets too; v1 backups contain them.
 - 2026-11-10: Power plan restore: when a scheme with the backup's active GUID already exists (built-in plans share GUIDs), it is only made active; otherwise imported. Undo entry `Power.imported` is optional.
 
+- 2026-11-10 (second VM dry run): certificates are exported only for the user running the backup, but nothing said whose they were, so any restored user would have got them (with the private key). The bundle now has `system/certs/OWNER.txt` (SID, name); restore imports certificates only when the restored backup user has that SID.
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
