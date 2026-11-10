@@ -1,4 +1,4 @@
-//! `rebootly undo`: put a restore back (SPEC §5 undo).
+//! `rebootly-cli undo`: put a restore back (SPEC §5 undo).
 
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};

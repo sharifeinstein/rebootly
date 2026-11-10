@@ -276,7 +276,7 @@ pub fn cert_owner_check(owner: Option<&str>, user_sid: &str) -> Result<(), Strin
         return Err(
             "this backup doesn't record whose certificates they are (made by an older \
              Rebootly), so they weren't imported. If they're yours, get the .pfx \
-                    files and PFX-PASSWORD.txt with `rebootly sensitive extract` and import \
+                    files and PFX-PASSWORD.txt with `rebootly-cli sensitive extract` and import \
                     them in certmgr.msc"
                 .into(),
         );

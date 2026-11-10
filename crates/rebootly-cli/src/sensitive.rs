@@ -1,4 +1,4 @@
-//! Passphrase input and `rebootly sensitive list|extract`.
+//! Passphrase input and `rebootly-cli sensitive list|extract`.
 
 use std::path::{Path, PathBuf};
 

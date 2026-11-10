@@ -9,8 +9,8 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::text::Line;
 
-use crate::platform::Platform;
 use crate::ui::{self, Ui, chrome, popup};
+use rebootly_host::Platform;
 
 pub enum Nav {
     Stay,

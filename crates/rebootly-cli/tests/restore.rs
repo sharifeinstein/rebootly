@@ -6,7 +6,7 @@ fn fixture() -> PathBuf {
 }
 
 fn rebootly(args: &[&str]) -> (i32, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_rebootly"))
+    let out = Command::new(env!("CARGO_BIN_EXE_rebootly-cli"))
         .args(args)
         .output()
         .unwrap();
@@ -120,7 +120,7 @@ fn version_names_the_commit() {
     let (code, out, _) = rebootly(&["--version"]);
     assert_eq!(code, 0);
     assert!(
-        out.starts_with("rebootly 0.") && out.contains("(commit "),
+        out.starts_with("rebootly-cli 0.") && out.contains("(commit "),
         "{out}"
     );
 }

@@ -1,13 +1,12 @@
 //! Interactive ratatui front end for Rebootly (SPEC §11): Quick / Full /
 //! Custom backups, the Rescue flow in WinPE/Linux, progress with pause and
 //! safe cancel, restore with conflict questions, and tick-box checklists.
-//! Every action has a CLI equivalent (`rebootly backup|restore|undo`).
+//! Every action has a CLI equivalent (`rebootly-cli backup|restore|undo`).
 
 pub mod app;
 pub mod backup;
 pub mod checklist;
 pub mod home;
-pub mod platform;
 pub mod restore;
 pub mod textview;
 pub mod ui;
@@ -15,7 +14,7 @@ pub mod widgets;
 
 use rebootly_core::env::Environment;
 
-pub use platform::{Drive, Platform};
+pub use rebootly_host::{Drive, Platform};
 
 /// The first screen: the start menu on a running Windows, the Rescue flow
 /// (find Windows) in WinPE or Linux.

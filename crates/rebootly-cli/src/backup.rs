@@ -1,4 +1,4 @@
-//! `rebootly backup`: Tier 1 folders + raw hives to a target folder.
+//! `rebootly-cli backup`: Tier 1 folders + raw hives to a target folder.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -155,7 +155,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         let path = profile::save(target, &job).context("saving the job profile")?;
         println!("{}", path.display());
         eprintln!(
-            "Saved; run it with: rebootly backup --profile \"{}\" --target …",
+            "Saved; run it with: rebootly-cli backup --profile \"{}\" --target …",
             path.display()
         );
         return Ok(0);

@@ -1,16 +1,10 @@
-//! `rebootly` with no arguments (or `rebootly tui`): the interactive TUI,
-//! with this machine behind it (`rebootly_tui::Platform`).
+//! `rebootly-cli` with no arguments (or `rebootly-cli tui`): the text
+//! screens, with this machine behind them.
 
-use std::any::Any;
 use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use rebootly_core::Source;
-use rebootly_core::backup::preflight::gib;
-use rebootly_core::env::Environment;
-use rebootly_core::packs::schema::CompiledPack;
-use rebootly_core::restore::{RestoreHost, SimHost, Target};
-use rebootly_tui::{Drive, Platform};
+use rebootly_host::{Machine, MachineOptions};
 
 #[derive(clap::Args, Default)]
 pub struct TuiArgs {
@@ -26,183 +20,17 @@ pub struct TuiArgs {
     pub drives: Vec<PathBuf>,
 }
 
-struct CliPlatform {
-    args: TuiArgs,
-}
-
-fn note(p: &Path) -> String {
-    let free = fs4::available_space(p).ok().map(gib);
-    let fs = fs_type(p);
-    match (free, fs) {
-        (Some(f), Some(t)) => format!("{f} free, {t}"),
-        (Some(f), None) => format!("{f} free"),
-        (None, _) => String::new(),
-    }
-}
-
-fn fs_type(p: &Path) -> Option<String> {
-    #[cfg(windows)]
-    {
-        rebootly_win::filesystem_type(p)
-    }
-    #[cfg(not(windows))]
-    {
-        rebootly_core::backup::preflight::filesystem_type(p)
-    }
-}
-
-/// Drive letters that exist (Windows), mount folders (Linux).
-fn mounted() -> Vec<PathBuf> {
-    if cfg!(windows) {
-        (b'A'..=b'Z')
-            .map(|c| PathBuf::from(format!("{}:\\", c as char)))
-            .filter(|p| p.is_dir())
-            .collect()
-    } else {
-        let mut out = Vec::new();
-        for base in ["/media", "/run/media", "/mnt"] {
-            let Ok(rd) = std::fs::read_dir(base) else {
-                continue;
-            };
-            for e in rd.flatten().filter(|e| e.path().is_dir()) {
-                let p = e.path();
-                // /media/<user>/<label> as well as /mnt/<label>.
-                let kids: Vec<PathBuf> = std::fs::read_dir(&p)
-                    .map(|r| {
-                        r.flatten()
-                            .map(|e| e.path())
-                            .filter(|p| p.is_dir())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                if base != "/mnt" && !kids.is_empty() {
-                    out.extend(kids);
-                } else {
-                    out.push(p);
-                }
-            }
-        }
-        out
-    }
-}
-
-impl Platform for CliPlatform {
-    fn environment(&self) -> Environment {
-        if self.args.simulate_root.is_some() {
-            return Environment::LiveWindows;
-        }
-        Environment::detect()
-    }
-
-    fn version(&self) -> String {
-        crate::VERSION.to_string()
-    }
-
-    fn open_live(&self) -> anyhow::Result<Box<dyn Source>> {
-        crate::source::live()
-    }
-
-    fn install_roots(&self) -> Vec<PathBuf> {
-        mounted()
-    }
-
-    fn drives(&self) -> Vec<Drive> {
-        let system = std::env::var("SystemDrive")
-            .ok()
-            .map(|d| d.to_ascii_uppercase());
-        let live = Environment::detect() == Environment::LiveWindows;
-        let mut out: Vec<Drive> = mounted()
-            .into_iter()
-            .filter(|p| {
-                // Never offer the running system's own drive.
-                !(live
-                    && system
-                        .as_deref()
-                        .is_some_and(|s| p.to_string_lossy().to_ascii_uppercase().starts_with(s)))
-            })
-            .map(|p| Drive {
-                note: note(&p),
-                path: p,
-            })
-            .collect();
-        for d in &self.args.drives {
-            out.push(Drive {
-                note: note(d),
-                path: d.clone(),
-            });
-        }
-        out
-    }
-
-    fn target_fs(&self, path: &Path) -> Option<String> {
-        if cfg!(windows) { fs_type(path) } else { None }
-    }
-
-    fn keep_awake(&self, live: bool) -> Box<dyn Any> {
-        Box::new(crate::source::Awake::quiet(live))
-    }
-
-    fn power_warning(&self) -> Option<String> {
-        #[cfg(windows)]
-        {
-            rebootly_win::on_battery()
-                .then(|| "Running on battery: plug the laptop in for a long backup.".into())
-        }
-        #[cfg(not(windows))]
-        {
-            None
-        }
-    }
-
-    fn packs(&self) -> Vec<CompiledPack> {
-        let dir = self
-            .args
-            .packs_dir
-            .clone()
-            .or_else(rebootly_core::packs::load::default_dir);
-        rebootly_core::packs::load::load_all(dir.as_deref()).0
-    }
-
-    fn restore_target(
-        &self,
-        dry_run: bool,
-        backup_user: &str,
-    ) -> anyhow::Result<(Target, Box<dyn RestoreHost>)> {
-        if let Some(root) = &self.args.simulate_root {
-            return Ok((Target::simulated(root, backup_user), Box::new(SimHost)));
-        }
-        #[cfg(windows)]
-        {
-            if Environment::detect() != Environment::LiveWindows {
-                anyhow::bail!(
-                    "restore runs on the new PC's own Windows, not from WinPE or a recovery system"
-                );
-            }
-            if !dry_run && !rebootly_win::is_elevated().unwrap_or(false) {
-                anyhow::bail!(
-                    "restoring needs Rebootly started as administrator (right-click → Run as administrator); a dry run works without"
-                );
-            }
-            Ok((
-                rebootly_win::live_target()?,
-                Box::new(rebootly_win::WinRestoreHost),
-            ))
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = dry_run;
-            anyhow::bail!(
-                "restore runs on the new PC's Windows; to preview here, start with --simulate-root DIR"
-            )
-        }
-    }
-}
-
 pub fn run(args: TuiArgs) -> anyhow::Result<u8> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         anyhow::bail!(
-            "the interactive screens need a terminal; see `rebootly --help` for the commands"
+            "the interactive screens need a terminal; see `rebootly-cli --help` for the commands"
         );
     }
-    rebootly_tui::run(&CliPlatform { args })
+    let m = Machine::new(MachineOptions {
+        packs_dir: args.packs_dir,
+        simulate_root: args.simulate_root,
+        drives: args.drives,
+        version: crate::VERSION.to_string(),
+    });
+    rebootly_tui::run(&m)
 }

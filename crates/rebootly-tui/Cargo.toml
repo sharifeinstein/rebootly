@@ -10,6 +10,7 @@ license.workspace = true
 anyhow.workspace = true
 ratatui = "0.29.0"
 rebootly-core.workspace = true
+rebootly-host.workspace = true
 
 [lints]
 workspace = true

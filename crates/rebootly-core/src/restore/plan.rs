@@ -203,7 +203,7 @@ pub fn plan(
         .collect();
     let bytes = mapped.files.iter().map(|f| f.size).sum();
     if !m.complete {
-        let msg = "the backup is incomplete (it was interrupted); finish it with `rebootly backup --resume` first";
+        let msg = "the backup is incomplete (it was interrupted); finish it with `rebootly-cli backup --resume` first";
         if opts.force {
             warnings.push(msg.into())
         } else {

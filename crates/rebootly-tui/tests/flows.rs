@@ -54,7 +54,7 @@ impl Platform for Fake {
         &self,
         _: bool,
         user: &str,
-    ) -> anyhow::Result<(Target, Box<dyn RestoreHost>)> {
+    ) -> anyhow::Result<(Target, Box<dyn RestoreHost + Send>)> {
         Ok((Target::simulated(&self.sim, user), Box::new(SimHost)))
     }
 }

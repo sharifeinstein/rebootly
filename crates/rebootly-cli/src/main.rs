@@ -26,7 +26,7 @@ pub const VERSION: &str = concat!(
 
 #[derive(Parser)]
 #[command(
-    name = "rebootly",
+    name = "rebootly-cli",
     version = VERSION,
     about = "Portable PC migration and backup"
 )]

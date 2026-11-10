@@ -1,4 +1,4 @@
-//! Text output of `rebootly backup`: detected packs and the pre-flight table.
+//! Text output of `rebootly-cli backup`: detected packs and the pre-flight table.
 
 use rebootly_core::backup;
 use rebootly_core::backup::preflight::{Preflight, gib};

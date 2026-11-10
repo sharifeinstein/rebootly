@@ -1,0 +1,16 @@
+[package]
+name = "rebootly-host"
+description = "The machine behind Rebootly's front ends (TUI, GUI): sources, drives, restore target"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rebootly-core.workspace = true
+rebootly-win.workspace = true
+anyhow.workspace = true
+fs4.workspace = true
+
+[lints]
+workspace = true

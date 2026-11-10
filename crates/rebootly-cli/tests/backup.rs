@@ -6,7 +6,7 @@ fn fixture() -> PathBuf {
 }
 
 fn rebootly(args: &[&str]) -> (i32, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_rebootly"))
+    let out = Command::new(env!("CARGO_BIN_EXE_rebootly-cli"))
         .args(args)
         .output()
         .unwrap();

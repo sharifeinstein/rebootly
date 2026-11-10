@@ -1,5 +1,11 @@
-//! What the TUI needs from the machine it runs on. The CLI implements this
-//! with rebootly-win on Windows; tests use a fake over the fixtures.
+//! What the front ends (TUI, GUI) need from the machine they run on.
+//! [`Machine`] is the real one (rebootly-win on Windows, mount folders on
+//! Linux); tests use fakes over the fixtures.
+
+pub mod machine;
+pub mod source;
+
+pub use machine::{Machine, MachineOptions};
 
 use std::any::Any;
 use std::path::{Path, PathBuf};
@@ -17,7 +23,8 @@ pub struct Drive {
     pub note: String,
 }
 
-pub trait Platform {
+/// `Send + Sync` so the GUI can plan and copy on worker threads.
+pub trait Platform: Send + Sync {
     /// Where Rebootly runs; WinPE and Linux start the Rescue flow.
     fn environment(&self) -> Environment;
     /// `0.1.0 (commit abc1234)`.
@@ -49,5 +56,5 @@ pub trait Platform {
         &self,
         dry_run: bool,
         backup_user: &str,
-    ) -> anyhow::Result<(Target, Box<dyn RestoreHost>)>;
+    ) -> anyhow::Result<(Target, Box<dyn RestoreHost + Send>)>;
 }

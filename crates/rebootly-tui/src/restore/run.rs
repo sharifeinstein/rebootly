@@ -185,7 +185,7 @@ impl ResultScreen {
         let mut text = report::result_text(plan, &r);
         if let Some(d) = &r.undo_dir {
             text.push_str(&format!(
-                "\nTo undo this restore: rebootly undo   (saved in {})\n",
+                "\nTo undo this restore: rebootly-cli undo   (saved in {})\n",
                 d.display()
             ));
         }

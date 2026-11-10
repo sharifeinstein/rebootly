@@ -1423,8 +1423,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "fs4",
  "rebootly-core",
+ "rebootly-host",
  "rebootly-tui",
  "rebootly-win",
  "rpassword",
@@ -1449,6 +1449,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rebootly-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fs4",
+ "rebootly-core",
+ "rebootly-win",
+]
+
+[[package]]
 name = "rebootly-linux"
 version = "0.1.0"
 dependencies = [
@@ -1462,6 +1472,7 @@ dependencies = [
  "anyhow",
  "ratatui",
  "rebootly-core",
+ "rebootly-host",
  "serde_json",
  "tempfile",
 ]

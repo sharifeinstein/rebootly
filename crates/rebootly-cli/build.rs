@@ -1,4 +1,4 @@
-//! Puts the git commit into `rebootly --version`. Reads `.git` directly, so
+//! Puts the git commit into `rebootly-cli --version`. Reads `.git` directly, so
 //! no `git` program is needed; prints `unknown` outside a checkout.
 
 use std::path::{Path, PathBuf};

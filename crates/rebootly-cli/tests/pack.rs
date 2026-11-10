@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn rebootly(args: &[&str]) -> (i32, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_rebootly"))
+    let out = Command::new(env!("CARGO_BIN_EXE_rebootly-cli"))
         .args(args)
         .output()
         .unwrap();

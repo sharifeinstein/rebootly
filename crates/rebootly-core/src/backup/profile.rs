@@ -1,6 +1,6 @@
 //! What to back up, as the TUI's Quick / Full / Custom modes describe it,
 //! and saved **job profiles** on the stick (SPEC §11) for repeat backups
-//! and for IT techs doing many PCs. `rebootly backup --profile FILE` runs
+//! and for IT techs doing many PCs. `rebootly-cli backup --profile FILE` runs
 //! the same selection from the CLI.
 
 use std::path::{Path, PathBuf};

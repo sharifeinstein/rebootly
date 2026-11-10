@@ -7,18 +7,18 @@ rust-version.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "rebootly"
+name = "rebootly-cli"
 path = "src/main.rs"
 
 [dependencies]
 rebootly-core.workspace = true
+rebootly-host.workspace = true
 rebootly-win.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 rpassword = "7"
 rebootly-tui.workspace = true
-fs4.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

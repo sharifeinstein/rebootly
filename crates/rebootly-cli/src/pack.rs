@@ -1,4 +1,4 @@
-//! `rebootly pack list | validate` and pack loading for `backup`.
+//! `rebootly-cli pack list | validate` and pack loading for `backup`.
 
 use std::path::{Path, PathBuf};
 
@@ -35,7 +35,7 @@ pub fn load(dir: Option<&Path>, only: &[String]) -> anyhow::Result<Vec<CompiledP
             .collect();
         if !unknown.is_empty() {
             bail!(
-                "unknown pack id(s): {:?} (see `rebootly pack list`)",
+                "unknown pack id(s): {:?} (see `rebootly-cli pack list`)",
                 unknown
             );
         }

@@ -142,7 +142,7 @@ pub fn result_text(p: &RestorePlan, r: &RestoreResult) -> String {
         let _ = writeln!(s, "  {why}");
     }
     if let Some(d) = &r.undo_dir {
-        let _ = writeln!(s, "  undo: rebootly undo \"{}\"", d.display());
+        let _ = writeln!(s, "  undo: rebootly-cli undo \"{}\"", d.display());
     }
     let mut phase = None;
     for o in &r.outcomes {

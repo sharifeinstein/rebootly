@@ -12,8 +12,8 @@ use rebootly_core::backup::profile::Selection;
 use super::Shared;
 use super::preflight::PreflightScreen;
 use crate::app::{Ctx, Nav, Screen};
-use crate::platform::Drive;
 use crate::widgets::{Menu, TextField};
+use rebootly_host::Drive;
 
 /// Folder created on a chosen drive for backups and job profiles.
 pub const DRIVE_FOLDER: &str = "Rebootly";

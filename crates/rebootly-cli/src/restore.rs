@@ -1,4 +1,4 @@
-//! `rebootly restore` and `rebootly undo` (SPEC §5).
+//! `rebootly-cli restore` and `rebootly-cli undo` (SPEC §5).
 
 use std::io::{BufRead, IsTerminal, Write as _};
 use std::path::{Path, PathBuf};

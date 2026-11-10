@@ -127,7 +127,7 @@ pub fn text(m: &Manifest) -> String {
         );
         let _ = writeln!(
             s,
-            "  Open it with `rebootly sensitive extract` or `age -d {} | tar -x`; \
+            "  Open it with `rebootly-cli sensitive extract` or `age -d {} | tar -x`; \
              the passphrase is not stored anywhere.",
             sb.file
         );
