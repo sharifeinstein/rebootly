@@ -21,25 +21,20 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M5 — Restore (implemented 2026-11-10; waiting for the Windows VM test before it is ticked)
-Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` (plan → apps → files → packs → registry → system → Explorer → verify → manual steps), conflict policies, dry run, undo journal + `rebootly undo`, `--simulate-root` for previews/tests off Windows. 119 tests pass; clippy clean on Linux and (cloud type-check) for `x86_64-pc-windows-msvc`. The Windows side (`rebootly-win::live::restore`: `live_target`, `WinRestoreHost`) has only been type-checked, never run.
+Current milestone: M6 — TUI (not started)
+Last session: 2026-11-10 — M5 finished and verified on the Windows 10 VM (`DESKTOP-D3P1F40`, build `556e2fc`): Picard → Riker restore (elevated, signed in as Riker) of a live backup with `--sensitive`: 24 changes, 0 failed, 21 files verified; 75 HKCU keys exported for undo then imported; the PFX imported with the bundle password; power plan recognised as already active; Explorer restarted; Riker's own shortcuts, Quick Access and the SID-named search connector left alone. `rebootly undo` put everything back (21 steps, 0 failed): files deleted/restored, 8 top-level keys re-imported, certificate removed. Same-user restore (Picard → Picard) reported everything as already there. Fixed on the way (all found on Windows): undo copy flushed via a read-only handle (os error 5), browser packs too broad (v2/v3 allowlists), secret SQLite sidecars, duplicate power plans, certificates imported for the wrong user (now `OWNER.txt`), shortcuts/binary files tied to the old profile, `--version` with the commit, `undo --list` showing undone runs.
 
 ## Next step
-0. Backups made before 2026-11-10 13:xx with edge/chrome v1 contain Edge/Chrome junk and the `Cookies-journal`/`Login Data-journal` sidecars: make a fresh backup on the VM with the new exe before testing the restore.
-1. Test restore on the user's Windows 10 VM (VM `DESKTOP-D3P1F40`, user `Picard`, backup at `E:\rb\DESKTOP-D3P1F40_20261110-131615`, passphrase file `C:\rebootly\pp.txt`). Build on the PC (`cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`), copy `target\release\rebootly.exe` to the VM, elevated PowerShell:
-   - `rebootly restore E:\rb\DESKTOP-D3P1F40_20261110-131615 --dry-run --sensitive --passphrase-file C:\rebootly\pp.txt` (paste the plan and the conflict decisions)
-   - best on a second, fresh local user that is an administrator (e.g. `Riker`; sign in as Riker so HKCU and the profile are his): `rebootly restore <backup> --user Picard --sensitive --passphrase-file C:\rebootly\pp.txt` → check Desktop/Documents, VS Code/Git settings with rewritten paths, wallpaper/mouse (registry), the test certificate in `certmgr.msc`, power plan, hosts, `report.txt` in `%USERPROFILE%\.rebootly-undo\…`
-   - then `rebootly undo --list` and `rebootly undo` → everything back
-   - into the same user (`Picard`): expect "already there" for everything (identical files)
-2. Things only Windows can tell: `reg export`/`reg import` of the allowlisted keys, `Test-Path Registry::…`, Explorer restart (AutoRestartShell, not elevated), `powercfg /import` GUID parsing on a non-English Windows, `Import-PfxCertificate` with the bundle password file, stream + hidden/system attribute writes, `winget import` (needs App Installer).
-3. Then M6 (TUI). Open from M4: the hidden passphrase prompt got fewer than 8 characters twice on the VM (probably paste through the VM console); `--cloud-files hydrate`, Wi-Fi export and winget export are still untested for real.
+1. Start M6 (TUI, SPEC §11) in a fresh chat: this one covered M5 and a long test loop. Read only §11 first.
+2. Still untested for real (need hardware/software the VM lacks): `winget import` and `winget export` (App Installer), Wi-Fi export/`netsh wlan add profile` (Wi-Fi adapter), `--tasks` (schtasks /create from XML), `--cloud-files hydrate` (OneDrive signed in). Worth one pass on a real PC before M9.
+3. Open from M4: the hidden passphrase prompt received fewer than 8 characters twice on the VM (paste through the VM console?); `--passphrase-file` works.
 
 ## Milestones
 - [x] M1 Core resolver
 - [x] M2 Copy engine
 - [x] M3 Packs
 - [x] M4 Live Windows
-- [ ] M5 Restore (code done; Windows VM test pending)
+- [x] M5 Restore
 - [ ] M6 TUI
 - [ ] M7 Offline (WinPE/Linux, BitLocker)
 - [ ] M8 Rescue USB (Ventoy, Alpine, WinPE scripts)
@@ -135,6 +130,8 @@ Last session: 2026-11-10 — M5 written and tested on Linux: `rebootly restore` 
 - Restore: `min_app_version` gating not implemented (`os:` is); file ACLs and read-only attributes aren't restored; `post_restore` commands aren't run (listed). Packs whose app is running are skipped as a whole. Long-running `winget import` output goes straight to the console (2 h timeout).
 - Restore of other users' data needs a sign-in as each of them (by design); custom folders are restored by every run (identical the second time).
 - Undo can't put back a Wi-Fi profile or certificate that the restore *replaced* (existing ones are never replaced, so this shouldn't happen).
+- Registry undo re-imports the exported keys: old values come back, but values the restore *added* under an existing key stay (reg import never deletes). Deleting and re-creating keys like `HKCU\Control Panel` would be riskier than leaving a few extra values.
+- `Searches` and Links shortcuts from the old account are skipped when a same-named one exists; new ones with old-profile paths in Tier 1 folders are still restored (they're the user's own files).
 
 ## Crate map (one line per module: what it does)
 - `rebootly-core::hive` — read-only regf parser: keys, values, case-insensitive lookup, bounds-checked (`mod.rs`, `cell.rs`, `value.rs`).
