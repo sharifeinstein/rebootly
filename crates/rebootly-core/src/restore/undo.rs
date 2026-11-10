@@ -100,13 +100,13 @@ impl Journal {
         let rel = format!("files/{:06}", self.saved);
         let to = self.dir.join(&rel);
         std::fs::copy(local, &to)?;
+        // One writable handle for both: Windows refuses to flush (and to
+        // set times on) a file opened read-only.
+        let f = File::options().write(true).open(&to)?;
         if let Ok(t) = std::fs::metadata(local).and_then(|m| m.modified()) {
-            let _ = File::options()
-                .write(true)
-                .open(&to)
-                .and_then(|f| f.set_modified(t));
+            let _ = f.set_modified(t);
         }
-        File::open(&to)?.sync_all()?;
+        f.sync_all()?;
         Ok(rel)
     }
 
