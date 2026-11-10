@@ -14,26 +14,27 @@
 ## Repo / environment
 - Canonical tree: `D:\Projects\rebootly` on the user's PC (repo root, with `.git`). GitHub: `sharifeinstein/rebootly` once the user creates it (the Claude session can't create repos).
 - Builds run in the Claude cloud workspace (Rust 1.97, crates.io reachable); the tree is mirrored to D: after each milestone. The VM behind the linked folder has git but no Rust.
-- Sync to D: (until GitHub is set up): `git gc -q && tar --exclude=./target --exclude=./.git/objects/info/commit-graph --mode=u+w -cf /mnt/user-data/outputs/rebootly-sync-<sha>.tar .`, device_commit_files it to `D:\Projects\rebootly\.rebootly-sync.tar` (use a new staged file name each time, or a stale copy is sent), then on the device `tar --overwrite -xf .rebootly-sync.tar`. The bundle can't delete: after extracting, run `git status` on the device. Any untracked leftovers from files that were deleted or moved in the repo are moved (not deleted) to `D:\Projects\_rebootly_to_delete\`, which the user empties. `git gc` packs refs, and a stale loose `.git/refs/heads/main` on the device then still wins: if `git log -1` on the device shows the old commit, run `git update-ref refs/heads/main <new-sha> <old-sha>`. Always keep `--mode=u+w`: a file that arrives read-only on Windows can't be overwritten from the VM (the user would have to run `attrib -r /s`).
+- Sync to D: (until GitHub is set up). Small updates: `git bundle create <out>.bundle <device-head>..main` in the cloud, commit it to `D:\Projects\rebootly\.rb-update.bundle`, then on the device `git pull --ff-only .rb-update.bundle main && rm .rb-update.bundle` (no loose-ref or leftover-file problems). To bring device commits to the cloud, the reverse. Full mirror: `git gc -q && tar --exclude=./target --exclude=./.git/objects/info/commit-graph --mode=u+w -cf /mnt/user-data/outputs/rebootly-sync-<sha>.tar .`, device_commit_files it to `D:\Projects\rebootly\.rebootly-sync.tar` (use a new staged file name each time, or a stale copy is sent), then on the device `tar --overwrite -xf .rebootly-sync.tar`. The bundle can't delete: after extracting, run `git status` on the device. Any untracked leftovers from files that were deleted or moved in the repo are moved (not deleted) to `D:\Projects\_rebootly_to_delete\`, which the user empties. `git gc` packs refs, and a stale loose `.git/refs/heads/main` on the device then still wins: if `git log -1` on the device shows the old commit, run `git update-ref refs/heads/main <new-sha> <old-sha>`. Always keep `--mode=u+w`: a file that arrives read-only on Windows can't be overwritten from the VM (the user would have to run `attrib -r /s`).
 - **Windows checks — split of work (2026-11-09):** the user builds, tests and runs on the real Windows PC from PowerShell (`cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`, then the live commands) and pastes the output back. Claude doesn't spend effort on Windows tooling in the cloud beyond the cheap type-check.
 - Cloud Windows type-check (optional, cheap): `scripts/check-windows.sh check|clippy` builds std from source for `x86_64-pc-windows-msvc`. Setup per new session: `git clone --depth 1 --filter=blob:none --sparse https://github.com/rust-lang/rust.git`, fetch the commit from `rustc -vV` (commit-hash), `git sparse-checkout set library`, check out `library/backtrace` (submodule, from rust-lang/backtrace-rs at the pinned sha), copy `library/` to `$(rustc --print sysroot)/lib/rustlib/src/rust/library`. `scripts/test-windows-wine.sh` (MinGW + wine64 via apt) also works for running the tests under Wine; use only if the user's PC isn't available.
 - Sync needs file deletion in the D: folder (git removes its own lock files): call device_request_delete_permission for `D:\Projects\rebootly` once per session before any git command there. Exclude the bundle itself when re-bundling on the device (`--exclude=./.rebootly-sync.tar`).
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M4 — code complete; waiting for the first run on real Windows (everything live has only been type-checked for Windows and tested through Linux test doubles)
-Last session: 2026-11-09 — M4 part 2: VSS fallback for locked files, `--cloud-files skip|hydrate`, alternate data streams, user certificates, power plan, default apps, driver list, VPN phonebooks, target filesystem type on Windows
+Current milestone: M5 — Restore (not started)
+Last session: 2026-11-10 — M4 finished and verified on a clean Windows 10 22H2 VM (elevated, live): 236 files in 4 s, 0 failed; a file held open without sharing was read from a VSS shadow (shadow deleted afterwards); a custom stream kept under `streams/`, Zone.Identifier dropped; test certificate exported as PFX into `sensitive.age`; power plan, default apps, drivers, printers, tasks captured; target filesystem (NTFS) detected. Expected warnings on a clean VM: no winget, no Wi-Fi adapter. Fixed on the way: hydrate check (`Source::is_live`), static CRT, passphrase-too-short message, report rows grouped per `system/` kind.
 
 ## Next step
-1. **User, PowerShell (real Windows):** `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; from an elevated prompt `rebootly inspect --live` and `rebootly backup --live --preflight --target D:\x` (runs winget, Get-Printer, powercfg, dism, pnputil once; copies nothing). Optional: the same with `--sensitive` (also exports Wi-Fi and the user's certificates to a temp folder, then deletes them). Fix whatever that shows, then tick M4.
-2. Real-run tests (VSS on an open PST, streams, hydrate) wait for a test PC or VM; the user doesn't want a full backup on this machine.
-3. Then M5 restore (SPEC §5): read `streams/`, `snapshot`, the Tier 4 files (`powercfg /import`, `netsh wlan add profile`, PFX import with the bundled password).
+1. M5 restore (SPEC §5). Read only §5 and §10 (manifest) first. Inputs now include `streams/` + manifest `streams`, `snapshot`, the Tier 4 files (`powercfg /import`, `netsh wlan add profile`, PFX import with `system/certs/PFX-PASSWORD.txt` from the bundle, VPN phonebooks, default-apps report only).
+2. Test restores on the user's Windows 10 VM (VM `DESKTOP-D3P1F40`, user `Picard`, target disk `E:`, a backup already at `E:\rb\DESKTOP-D3P1F40_20261110-131615`, passphrase file `C:\rebootly\pp.txt`). Copy `target\release\rebootly.exe` from the user's PC (static CRT, no runtime needed).
+3. Open question: on the VM the hidden passphrase prompt received fewer than 8 characters twice (probably pasted through the VM console). The prompt now reports how many characters arrived; check it once by typing.
+4. Still untested for real: `--cloud-files hydrate` (needs OneDrive signed in), Wi-Fi export (needs a Wi-Fi adapter), winget export (needs App Installer).
 
 ## Milestones
 - [x] M1 Core resolver
 - [x] M2 Copy engine
 - [x] M3 Packs
-- [ ] M4 Live Windows
+- [x] M4 Live Windows
 - [ ] M5 Restore
 - [ ] M6 TUI
 - [ ] M7 Offline (WinPE/Linux, BitLocker)
@@ -87,9 +88,8 @@ Last session: 2026-11-09 — M4 part 2: VSS fallback for locked files, `--cloud-
 - 2026-11-10: `Source::is_live()` says whether the source is the running Windows; `environment()` only says where the process runs (an offline backup of another disk made from Windows is still "live-windows"). Found by `cargo test` on Windows: hydrate's live-only check used `environment()`.
 
 ## Known issues / TODO
-- None of the live commands (winget, netsh, Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies) has run for real yet. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
+- Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
-- Live mode has only been type-checked and run under Wine (elevation + privilege paths), never on real Windows.
 - VSS: a shadow copy is ClientAccessible and persists if the process is killed; the next live run deletes it (per-PID ledger in `%TEMP%`). Two live runs at once are not supported.
 - Alternate data streams cost one extra open per file (listing); offline mounts don't expose streams (ntfs-3g `streams_interface=xattr` could, M7).
 - Certificates are exported only for the user running the tool; `--cloud-files` has no "skip the whole OneDrive folder" choice yet.

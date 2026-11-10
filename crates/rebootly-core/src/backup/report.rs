@@ -76,7 +76,8 @@ pub fn text(m: &Manifest) -> String {
         let key = if key.first() == Some(&"users") {
             key.join("/")
         } else {
-            key[..key.len().min(3)].join("/")
+            // system/<item>: one row per kind (tasks, power, hives), not per file.
+            key[..key.len().min(2)].join("/")
         };
         let e = per_folder.entry(key).or_default();
         e.0 += 1;
