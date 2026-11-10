@@ -82,6 +82,8 @@ Last session: 2026-11-09 — M4 part 2: VSS fallback for locked files, `--cloud-
 - 2026-11-09: User certificates via `Export-PfxCertificate` (not certutil), bundle only, random PFX password stored inside the bundle; running user only; non-exportable keys → `.cer` + warning. Power plan, default apps and driver list are plain live captures; VPN phonebooks are copied in both modes (per user: windows-shell pack v2; all users: `system/vpn/`).
 - 2026-11-09: `backup::preflight` takes the target filesystem type from the caller (Windows: rebootly-win), else looks it up (Linux). `run.rs` per-file work moved to `backup::filecopy`.
 
+- 2026-11-10: Windows builds link the C runtime statically (`.cargo/config.toml`, `+crt-static`), so `rebootly.exe` runs on a clean PC/VM/WinPE without the VC++ Redistributable.
+
 ## Known issues / TODO
 - None of the live commands (winget, netsh, Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies) has run for real yet. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
