@@ -2,6 +2,7 @@
 //! as the text screens (`rebootly-cli`); every action also has a command.
 
 pub mod app;
+pub mod donate;
 pub mod pages;
 pub mod task;
 pub mod widgets;

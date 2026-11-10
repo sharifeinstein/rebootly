@@ -93,6 +93,7 @@ pub struct RestoreRunPage {
     open: Option<Question>,
     task: Task<Outcome>,
     done: Option<(Outcome, Checklist)>,
+    donate: crate::donate::Donate,
 }
 
 impl RestoreRunPage {
@@ -135,6 +136,7 @@ impl RestoreRunPage {
             open: None,
             task,
             done: None,
+            donate: crate::donate::Donate::for_this_build(),
         }
     }
 
@@ -246,8 +248,12 @@ impl Page for RestoreRunPage {
         }
         ui.add_space(6.0);
         checklist.ui(ui);
+        let ok = result.is_ok() && !self.dry_run;
         if primary(ui, "Done", true) {
             return Nav::Home;
+        }
+        if ok {
+            self.donate.ui(ui);
         }
         Nav::Stay
     }

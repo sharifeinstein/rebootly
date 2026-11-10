@@ -9,6 +9,11 @@ pub mod source;
 
 pub use machine::{Machine, MachineOptions};
 
+/// Donation link shown (optionally, closable) at the end of a backup or
+/// restore. Set at build time: `REBOOTLY_DONATE_URL=https://… cargo build`;
+/// without it nothing is shown.
+pub const DONATE_URL: Option<&str> = option_env!("REBOOTLY_DONATE_URL");
+
 use std::any::Any;
 use std::path::{Path, PathBuf};
 

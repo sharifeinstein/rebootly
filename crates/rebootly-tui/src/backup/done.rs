@@ -81,6 +81,12 @@ impl DoneScreen {
             ),
             dim(),
         ));
+        if let (Some(url), true) = (rebootly_host::DONATE_URL, out.result.is_ok()) {
+            lines.push(Line::styled(
+                format!("Rebootly is free. If it saved you time, you can buy me a coffee: {url}"),
+                dim(),
+            ));
+        }
         DoneScreen {
             lines,
             checklist: Checklist::new(steps),

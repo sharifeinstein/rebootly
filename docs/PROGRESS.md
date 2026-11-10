@@ -127,6 +127,9 @@ Last session: 2026-11-10 — M6 built in two parts. (1) Text screens (`rebootly-
 - 2026-11-10 (GUI): The window flashes the taskbar button when a backup or restore finishes (SPEC §11 "completion notification"); the text screens ring the bell.
 - 2026-11-10: Account kinds are shown in words ("Microsoft account", "work or school account (Entra ID)", "local or domain account"); the restore user list shows each account's size in the backup (`restore::find::user_size`).
 
+- 2026-11-10: Version saved as tag `v0.1.0-preview` (commit 3214e38, before the donation card). Rebootly will be published free (owner).
+- 2026-11-10: Optional donation card ("Rebootly is free … buy me a coffee", QR code + "Open the page") at the end of a successful backup and a real (not dry-run) restore in the GUI; one dim line on the text screens' backup-done screen. Never blocks anything: "Close" hides it for the run, "Don't show this again" writes `%LOCALAPPDATA%\Rebootly\no-donation-card`. The link is set at build time (`REBOOTLY_DONATE_URL`, `rebootly_host::DONATE_URL`); without it nothing shows. QR drawn by `qrcode` (MIT/Apache, no image deps), black on white in both themes; checked with a scanner (zbarimg).
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).

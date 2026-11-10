@@ -40,6 +40,7 @@ pub struct BackupRunPage {
     confirm_stop: bool,
     finished: Option<(Result<Manifest, String>, Duration, Checklist)>,
     told: bool,
+    donate: crate::donate::Donate,
 }
 
 impl BackupRunPage {
@@ -91,6 +92,7 @@ impl BackupRunPage {
             confirm_stop: false,
             finished: None,
             told: false,
+            donate: crate::donate::Donate::for_this_build(),
         }
     }
 
@@ -245,8 +247,12 @@ impl BackupRunPage {
         });
         ui.add_space(6.0);
         checklist.ui(ui);
+        let ok = result.is_ok();
         if primary(ui, "Done", true) {
             return Nav::Home;
+        }
+        if ok {
+            self.donate.ui(ui);
         }
         Nav::Stay
     }
