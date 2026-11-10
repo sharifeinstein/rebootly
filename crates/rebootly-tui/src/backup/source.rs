@@ -2,7 +2,7 @@
 //! another disk (the Rescue flow's "find Windows" step).
 
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -100,12 +100,12 @@ impl SourceScreen {
                     ctx.fixed_target = Some(target.clone());
                     Nav::Push(Box::new(PreflightScreen::new(
                         cx,
-                        Rc::new(ctx),
+                        Arc::new(ctx),
                         job.selection,
                         target,
                     )))
                 }
-                None => Nav::Push(Box::new(UsersScreen::new(Rc::new(ctx)))),
+                None => Nav::Push(Box::new(UsersScreen::new(Arc::new(ctx)))),
             },
             Err(e) => {
                 self.error = Some(format!("{e:#}"));

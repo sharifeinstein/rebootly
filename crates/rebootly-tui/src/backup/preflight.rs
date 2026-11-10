@@ -1,7 +1,7 @@
 //! Plain-language pre-flight summary (SPEC §11), the live-mode reminders,
 //! saving a job profile, the passphrase, and the start of the copy.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -12,9 +12,9 @@ use ratatui::widgets::{Paragraph, Wrap};
 use rebootly_core::backup::preflight::{Preflight, gib};
 use rebootly_core::backup::profile::{self, JobProfile, PROFILE_SCHEMA, Selection};
 use rebootly_core::backup::sensitive::Passphrase;
-use rebootly_core::backup::summary::{Summary, speed_probe, summarize};
-use rebootly_core::backup::{self, Job, Plan};
-use rebootly_core::restore::find::find_backups;
+use rebootly_core::backup::summary::Summary;
+use rebootly_core::backup::{Job, Plan};
+use rebootly_host::session::prepare;
 
 use super::Shared;
 use super::done::DoneScreen;
@@ -39,33 +39,13 @@ pub struct PreflightScreen {
     message: Option<(String, bool)>,
 }
 
-fn nearest_existing(p: &Path) -> PathBuf {
-    p.ancestors()
-        .find(|a| a.is_dir())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
-}
-
 impl PreflightScreen {
     pub fn new(cx: &mut Ctx, ctx: Shared, sel: Selection, target: PathBuf) -> Self {
-        cx.busy(
-            "Pre-flight",
-            "Counting files and testing the target's speed…",
-        );
-        let probe = nearest_existing(&target);
-        let ready = ctx.plan(&sel).map_err(|e| format!("{e:#}")).map(|plan| {
-            let pre = backup::preflight(&plan, &probe, None, cx.platform.target_fs(&probe));
-            let speed = speed_probe(&probe);
-            let sum = summarize(&plan, &pre, speed);
-            (plan, pre, sum)
-        });
-        let machine = ready
-            .as_ref()
-            .ok()
-            .and_then(|(p, _, _)| p.source.machine.clone());
-        let resumable = find_backups(std::slice::from_ref(&target))
-            .into_iter()
-            .find(|b| !b.complete && Some(&b.machine) == machine.as_ref())
-            .map(|b| b.dir);
+        cx.busy("Pre-flight", "Counting files and testing the target's speed…");
+        let (ready, resumable) = match prepare(&ctx, &sel, &target, cx.platform) {
+            Ok(p) => (Ok((p.plan, p.pre, p.summary)), p.resumable),
+            Err(e) => (Err(format!("{e:#}")), None),
+        };
         PreflightScreen {
             ctx,
             sel,

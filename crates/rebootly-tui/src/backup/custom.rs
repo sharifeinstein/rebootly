@@ -1,13 +1,11 @@
 //! Custom mode: a tree with checkboxes and sizes (SPEC §11). Sizes come
 //! from a Full plan of the chosen accounts.
 
-use std::collections::BTreeMap;
-
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::Paragraph;
-use rebootly_core::backup::Plan;
+use rebootly_core::backup::sizes::sizes;
 use rebootly_core::backup::preflight::gib;
 use rebootly_core::backup::profile::{Mode, Selection};
 
@@ -15,45 +13,6 @@ use super::Shared;
 use super::target::TargetScreen;
 use crate::app::{Ctx, Nav, Screen};
 use crate::widgets::{Check, Checks};
-
-/// Row id for a planned file's destination (`folder:Documents`,
-/// `pack:vscode`, `public`, `root:Projects`, `system`); raw hives have none
-/// (always included).
-pub fn bucket(dest: &str) -> Option<String> {
-    let p: Vec<&str> = dest.splitn(5, '/').collect();
-    match p.as_slice() {
-        ["users", _, "folders", kf, ..] => Some(format!("folder:{kf}")),
-        ["users", _, "packs", id, ..] => Some(format!("pack:{id}")),
-        ["users", _, "registry", f] => f.strip_suffix(".reg").map(|id| format!("pack:{id}")),
-        ["custom", "Public", ..] => Some("public".into()),
-        ["custom", label, ..] => Some(format!("root:{label}")),
-        ["system", "hives", ..] => None,
-        ["system", ..] => Some("system".into()),
-        _ => None,
-    }
-}
-
-/// (files, bytes) per row id.
-pub fn sizes(plan: &Plan) -> BTreeMap<String, (u64, u64)> {
-    let mut m: BTreeMap<String, (u64, u64)> = BTreeMap::new();
-    let mut add = |id: Option<String>, size: u64| {
-        if let Some(id) = id {
-            let e = m.entry(id).or_default();
-            e.0 += 1;
-            e.1 += size;
-        }
-    };
-    for f in &plan.files {
-        add(bucket(&f.dest), f.size);
-    }
-    for g in &plan.generated {
-        add(bucket(&g.dest), g.bytes.len() as u64);
-    }
-    for f in &plan.sensitive {
-        add(Some("sensitive".into()), f.size);
-    }
-    m
-}
 
 fn note(s: Option<&(u64, u64)>) -> String {
     match s {
@@ -187,30 +146,5 @@ impl Screen for CustomScreen {
             self.ctx.clone(),
             self.selection(),
         )))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::bucket;
-
-    #[test]
-    fn buckets() {
-        assert_eq!(
-            bucket("users/A/folders/Documents/x.txt").unwrap(),
-            "folder:Documents"
-        );
-        assert_eq!(
-            bucket("users/A/packs/vscode/settings.json").unwrap(),
-            "pack:vscode"
-        );
-        assert_eq!(
-            bucket("users/A/registry/windows-shell.reg").unwrap(),
-            "pack:windows-shell"
-        );
-        assert_eq!(bucket("custom/Public/Documents/a").unwrap(), "public");
-        assert_eq!(bucket("custom/Projects/a").unwrap(), "root:Projects");
-        assert_eq!(bucket("system/apps.json").unwrap(), "system");
-        assert!(bucket("system/hives/A/NTUSER.DAT").is_none());
     }
 }

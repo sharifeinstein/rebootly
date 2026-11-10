@@ -17,6 +17,7 @@ pub mod report;
 pub mod report_html;
 pub mod run;
 pub mod sensitive;
+pub mod sizes;
 pub mod state;
 pub mod summary;
 pub mod system;

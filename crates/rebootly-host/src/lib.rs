@@ -3,6 +3,7 @@
 //! Linux); tests use fakes over the fixtures.
 
 pub mod machine;
+pub mod session;
 pub mod source;
 
 pub use machine::{Machine, MachineOptions};

@@ -1,4 +1,4 @@
-# SPEC — Portable PC Migration & Backup Tool (name: **Rebootly**, binary `rebootly`)
+# SPEC — Portable PC Migration & Backup Tool (name: **Rebootly**; binaries `Rebootly.exe` (GUI) and `rebootly-cli` (commands, text screens))
 
 > Source of truth for the project. Keep in the repo at `docs/SPEC.md`.
 > Read only the sections relevant to the current milestone.
@@ -29,7 +29,7 @@ Microsoft removed Windows 11's local PC-to-PC Migration (Oct 2026 Patch Tuesday,
 ## 2. Tech decisions (settled)
 
 - **Language: Rust.** Reasons: static single binaries for Windows (static CRT) and Linux (musl); Microsoft's `windows` crate for Win32/COM; memory safety for a tool that touches every user file; C#/.NET is unusable in WinPE.
-- **UI:** `ratatui` TUI is the primary interface, because it works in a WinPE console, a Linux TTY and over SSH. An optional Slint GUI for live Windows comes later, on the same core.
+- **UI:** a Windows GUI (`Rebootly.exe`, egui/eframe with the wgpu renderer) for live Windows, and the `ratatui` text screens (`rebootly-cli` with no command) for consoles, WinPE, a Linux TTY and SSH. Both run on the same core and the shared machine layer (`rebootly-host`); every action also has a `rebootly-cli` command.
 - **Registry hives:** a pure-Rust offline hive parser, used in **all** modes. **Our own** read-only parser (`rebootly-core::hive`); `nt-hive` was rejected because it is GPL-2.0-or-later (decided M1, see PROGRESS.md). It is cross-platform and also covers users who aren't logged in. In live mode the Win32 API is a cross-check only.
 - **Serialization:** `serde` with YAML for packs and JSON for the manifest.
 - **Targets:** `x86_64-pc-windows-msvc` (+crt-static), `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-musl`.
@@ -44,8 +44,9 @@ rebootly/
 │  ├─ rebootly-win/     # VSS, KnownFolder API, live registry, SeBackupPrivilege, manage-bde, winget, netsh
 │  ├─ rebootly-linux/   # volume discovery, BitLocker unlock (cryptsetup/dislocker), ro mount
 │  ├─ rebootly-cli/     # thin CLI (scripting, tests, IT techs)
-│  └─ rebootly-tui/     # primary interactive front end
-│  (rebootly-gui/ later — Slint, live Windows only)
+│  ├─ rebootly-host/    # machine layer shared by the front ends
+│  ├─ rebootly-tui/     # text screens (consoles, WinPE, Linux)
+│  └─ rebootly-gui/     # Windows GUI (egui), binary Rebootly.exe
 ├─ packs/              # built-in app packs (YAML), shipped beside the binary
 ├─ rescue/             # Ventoy layout, Alpine build script, WinPE build script
 ├─ tests/fixtures/     # sample hives, fake profile trees
@@ -274,7 +275,7 @@ Tool version, schema version, job ID, timestamps, `complete` flag; source machin
 ---
 
 ## 12. Later (not v1)
-Incremental/scheduled backups with a content-addressed store and dedup; zstd compression; SFTP/WebDAV targets; Slint GUI; Storage Spaces/dynamic disks offline; restore from an offline environment (files only); a community pack repository.
+Incremental/scheduled backups with a content-addressed store and dedup; zstd compression; SFTP/WebDAV targets; Storage Spaces/dynamic disks offline; restore from an offline environment (files only); a community pack repository.
 
 ---
 
