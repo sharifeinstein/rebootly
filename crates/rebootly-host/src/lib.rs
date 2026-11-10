@@ -2,6 +2,7 @@
 //! [`Machine`] is the real one (rebootly-win on Windows, mount folders on
 //! Linux); tests use fakes over the fixtures.
 
+pub mod custom;
 pub mod machine;
 pub mod session;
 pub mod source;

@@ -21,15 +21,17 @@
 - To resume in a new chat: copy `D:\Projects\rebootly` into the workspace (stage `.rebootly-sync.tar` after re-bundling on the device, or the files) (or clone from GitHub once it exists), then `cargo test`.
 
 ## Status
-Current milestone: M6 — TUI implemented and tested in the cloud; Windows run by the user pending
-Last session: 2026-11-10 — M6 built: `rebootly` with no command opens the TUI (ratatui 0.29). Start menu (Back up / Restore / Run a saved job), Rescue flow in WinPE/Linux (starts at "find Windows"), source → accounts → Quick/Full/Custom (tree with ticks and sizes) → target (drives get a `Rebootly\` folder) → plain-language pre-flight ("47.2 GiB in 9,812 files, about 38 min to this drive, 12 apps to reinstall, 3 things to do by hand", from a 32 MiB write test) with live-mode reminders → progress with ETA, last file, pause (p) and safe stop (c, y) → done screen with tick-box checklist and `report.html`. Restore: backups found on the drives (newest first) → backup user → options as ticks → plan preview → dry run (d) or restore (Enter, y), conflicts and "apps done?" asked in a box → result + checklist. Job profiles (`s` on pre-flight; `--profile`, `--save-profile`, `--full` in the CLI). 147 tests (8 whole-flow TUI tests with scripted keys), clippy clean on Linux and the Windows type-check; checked in a real pty too.
+Current milestone: M6 — text screens and Windows GUI implemented and tested in the cloud; Windows run by the user pending
+Last session: 2026-11-10 — M6 built in two parts. (1) Text screens (`rebootly-cli` with no command; ratatui): start menu, Rescue flow in WinPE/Linux, Quick/Full/Custom, plain-language pre-flight, progress with pause/stop/continue, restore with preview and dry run, tick-box checklists, job profiles, `report.html`. (2) After the owner asked for a real Windows GUI: `Rebootly.exe` (crate `rebootly-gui`, egui/eframe 0.37, wgpu renderer with software fallback, admin manifest, Segoe UI with symbol/CJK fallbacks) with the same flows plus Undo; slow steps on worker threads. The CLI binary was renamed `rebootly-cli` (Windows can't hold `Rebootly.exe` and `rebootly.exe` side by side). Shared machine layer `rebootly-host`. 151 tests (8 TUI flows with scripted keys, 3 GUI flows through the accessibility tree), clippy clean on Linux and the Windows type-check; GUI pages looked at under Xvfb (software Vulkan), TUI in a real pty.
 
 ## Next step
-0. **In progress: Windows GUI (owner decision 2026-11-10).** Crate `rebootly-gui`, binary `Rebootly` (`Rebootly.exe`, windows subsystem, admin manifest via `embed-manifest`), eframe/egui 0.37 with the wgpu renderer (DX12; adapter selector falls back to the software/WARP adapter on VMs), `rfd` folder picker on Windows only. Pages mirror the TUI: home, source, accounts, mode, custom, target, pre-flight, progress (worker thread; `Flow` for pause/stop; shared progress state polled each frame), done + checklist, restore pick/options/plan/run (worker thread; conflicts and "apps done?" round-trip over channels), result + checklist. Shared code already moved: `rebootly-host` (`Platform`, `Machine`, `session::{BackupCtx, prepare}`), `rebootly_core::backup::sizes`. Tests: `egui_kittest` (find widgets by label, click, step until a label shows). Then docs, commit, sync, Windows commands for the user.
-1. **User, on Windows (elevated PowerShell in `D:\Projects\rebootly`):** `git log -1` (should show the M6 commit), `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`, then `.\target\release\rebootly.exe` and walk through: Back up → This PC → Quick → a USB stick or folder (Type a folder…) → check the pre-flight sentence, pause/resume, stop and continue (r), the done checklist and `report.html` in a browser; then Restore on the VM (Picard → Riker) with a dry run first. Paste back anything odd (layout, keys, wording, errors). Windows Terminal and the old console (conhost) both matter: WinPE only has conhost.
-2. After that check, mark M6 done and start M7 (Offline: WinPE detection, BitLocker unlock, Linux ro mount, volume discovery; SPEC §3.3, §7) in a fresh chat. The Rescue flow's BitLocker step slots into `rebootly-tui/src/backup/source.rs`.
+1. **User, on Windows (elevated PowerShell in `D:\Projects\rebootly`):** `rustup update` (the GUI needs Rust 1.95+; `rustc --version`), `git log -1`, `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`. Then:
+   - `.\target\release\Rebootly.exe` (asks for admin): Back up → This PC → accounts → Quick → a USB stick or "Another folder" (Browse…) → pre-flight → Start; try Pause/Resume and Stop… then "Continue the unfinished backup"; Open the report. On the VM: Restore (Picard → Riker) with Dry run first, then Restore…; then Undo a restore. Check the window opens on the VM (software rendering) and looks right at 100/150% scaling.
+   - `.\target\release\rebootly-cli.exe` with no arguments: the text screens, in Windows Terminal and the old console.
+   Paste back anything odd (layout, wording, errors).
+2. After that check, mark M6 done and start M7 (Offline: WinPE detection, BitLocker unlock, Linux ro mount, volume discovery; SPEC §3.3, §7) in a fresh chat. The Rescue flow's BitLocker step slots into `rebootly-tui/src/backup/source.rs` (WinPE uses the text screens).
 3. Still untested for real (from M5): `winget import/export`, Wi-Fi export/`netsh wlan add profile`, `--tasks`, `--cloud-files hydrate`. Worth one pass on a real PC before M9.
-4. Open from M4: the hidden CLI passphrase prompt received fewer than 8 characters twice on the VM; the TUI passphrase field shows a dot per character and says how many arrived, which may show what happens.
+4. Open from M4: the hidden CLI passphrase prompt received fewer than 8 characters twice on the VM; the TUI/GUI passphrase fields say how many characters arrived.
 
 ## Milestones
 - [x] M1 Core resolver
@@ -37,7 +39,7 @@ Last session: 2026-11-10 — M6 built: `rebootly` with no command opens the TUI 
 - [x] M3 Packs
 - [x] M4 Live Windows
 - [x] M5 Restore
-- [ ] M6 TUI (implemented; Windows check pending)
+- [ ] M6 TUI + Windows GUI (implemented; Windows check pending)
 - [ ] M7 Offline (WinPE/Linux, BitLocker)
 - [ ] M8 Rescue USB (Ventoy, Alpine, WinPE scripts)
 - [ ] M9 Hardening & release
@@ -120,6 +122,11 @@ Last session: 2026-11-10 — M6 built: `rebootly` with no command opens the TUI 
 - 2026-11-10: **Windows GUI added to v1** (owner decision; SPEC had "Slint GUI later"). egui/eframe (MIT/Apache, testable headless in the cloud with egui_kittest) rather than Win32 controls (Windows-only testing) or Slint (license conflicts with the Apache-only dependency rule). Two executables: `Rebootly.exe` (GUI, double-click, no console) and `rebootly-cli.exe` (commands, text screens, WinPE; was `rebootly`, renamed because Windows file names ignore case). The text screens stay for consoles, WinPE and Linux. The GUI crate needs Rust 1.95 (eframe 0.37); the rest stays on 1.85. SPEC §2 updated.
 - 2026-11-10: Machine layer shared by TUI and GUI in `rebootly-host`: `Platform` (now `Send + Sync`; `restore_target` returns `Box<dyn RestoreHost + Send>`), `Machine` (was the CLI's `CliPlatform`), `source::{live, open, Awake}`, `session::{BackupCtx (Arc), prepare}`.
 
+- 2026-11-10 (GUI): `Rebootly.exe` asks for admin at start (manifest `requireAdministrator`): live backup and restore need it. A standard user who elevates with someone else's credentials would restore into that account; the preview names the target account before anything changes. Release builds use the Windows subsystem (no console); a window that can't open shows a message box pointing to `rebootly-cli.exe`. `--simulate-root DIR`, `--drive DIR`, `--packs-dir DIR` work for `Rebootly.exe` too (previews, tests).
+- 2026-11-10 (GUI): wgpu renderer only (no OpenGL): DX12 on Windows; the adapter selector prefers a real GPU and falls back to the software adapter (WARP), which VMs without 3D need. Missing glyphs draw as boxes (file names can hold anything); the kittest harness would otherwise panic on them.
+- 2026-11-10 (GUI): The window flashes the taskbar button when a backup or restore finishes (SPEC §11 "completion notification"); the text screens ring the bell.
+- 2026-11-10: Account kinds are shown in words ("Microsoft account", "work or school account (Entra ID)", "local or domain account"); the restore user list shows each account's size in the backup (`restore::find::user_size`).
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
@@ -146,9 +153,10 @@ Last session: 2026-11-10 — M6 built: `rebootly` with no command opens the TUI 
 - Undo can't put back a Wi-Fi profile or certificate that the restore *replaced* (existing ones are never replaced, so this shouldn't happen).
 - Registry undo re-imports the exported keys: old values come back, but values the restore *added* under an existing key stay (reg import never deletes). Deleting and re-creating keys like `HKCU\Control Panel` would be riskier than leaving a few extra values.
 - `Searches` and Links shortcuts from the old account are skipped when a same-named one exists; new ones with old-profile paths in Tier 1 folders are still restored (they're the user's own files).
-- Not done from SPEC §11 yet: rotating logs on the target with redaction and `--debug`; `verify` (re-hash a backup) and `compare` (check the new PC against the manifest) commands — both were listed under M5 in §14 and are still missing; a completion notification beyond the terminal bell; Undo in the TUI (CLI `rebootly-cli undo` only).
+- Not done from SPEC §11 yet: rotating logs on the target with redaction and `--debug`; `verify` (re-hash a backup) and `compare` (check the new PC against the manifest) commands — both were listed under M5 in §14 and are still missing; a completion notification beyond the terminal bell; Undo in the text screens (the GUI and `rebootly-cli undo` have it).
 - TUI: Custom mode plans twice (Full plan for sizes, then the chosen plan), so the folders are walked twice. Drives on Windows are every existing drive letter but the system drive (no removable/fixed check yet). The Rescue flow has no BitLocker step yet (M7); locked volumes simply aren't listed.
-- TUI restore conflicts: the default policies never ask (keep-both for your files, overwrite for settings); the "ask" box appears only with an `ask` policy, which the TUI doesn't offer yet.
+- Times on the restore list are the backup's UTC times, not local time.
+- TUI/GUI restore conflicts: the default policies never ask (keep-both for your files, overwrite for settings); the "ask" box appears only with an `ask` policy, which the TUI doesn't offer yet.
 
 ## Crate map (one line per module: what it does)
 - `rebootly-core::hive` — read-only regf parser: keys, values, case-insensitive lookup, bounds-checked (`mod.rs`, `cell.rs`, `value.rs`).
@@ -191,5 +199,8 @@ Last session: 2026-11-10 — M6 built: `rebootly` with no command opens the TUI 
 - `rebootly-core::backup::{flow,summary,profile,report_html}` — run control (cancel/pause/bytes); plain-language pre-flight and speed probe; Quick/Full/Custom `Selection` and job profiles; printable report.
 - `rebootly-core::restore::find` — find backups under drives (newest first).
 - `rebootly-tui` — `platform` (trait the CLI implements), `ui` (terminal / scripted test UI, chrome, popup), `widgets` (menu, checkbox tree, text field), `app` (screen stack, main loop), `home` (start menu, saved jobs), `backup/` (`source` incl. Rescue, `users`, `mode`, `custom`, `target`, `preflight`, `progress`, `done`), `restore/` (`pick`, `options`, `plan`, `run`), `checklist`, `textview`. Flow tests in `tests/flows.rs`.
-- `rebootly-cli` also: `tui.rs` (`CliPlatform`, `rebootly-cli tui`), `backup_text.rs` (pre-flight/pack text output).
+- `rebootly-cli` (bin `rebootly-cli`) also: `tui.rs` (`rebootly-cli tui`, starts the text screens on `rebootly_host::Machine`), `backup_text.rs` (pre-flight/pack text output).
+- `rebootly-host` — `Platform` (trait), `machine` (`Machine`: drives, live source, packs, restore target incl. `--simulate-root`), `source` (`live`, `open`, `Awake`), `session` (`BackupCtx`, `prepare` = plan + pre-flight + speed test + resumable job), `custom` (Custom-mode rows and selection).
+- `rebootly-gui` (bin `Rebootly`) — `app` (window shell, page stack, style, fonts), `task` (worker threads), `widgets` (choice cards, primary button, folder field with Browse…, checklist), `pages/` (`home` incl. saved jobs, `source`, `accounts` incl. mode, `custom`, `target`, `preflight`, `backup_run` incl. done, `restore_pick` incl. user, `restore_options`, `restore_plan`, `restore_run` with questions over channels, `undo`). `build.rs`: commit (shared with the CLI's) and the Windows manifest. Flow tests in `tests/flows.rs` (egui_kittest).
+- `rebootly-core::backup::sizes` — size per Custom-mode item.
 - `rebootly-linux` — placeholder for M7.

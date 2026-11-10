@@ -41,7 +41,10 @@ pub struct PreflightScreen {
 
 impl PreflightScreen {
     pub fn new(cx: &mut Ctx, ctx: Shared, sel: Selection, target: PathBuf) -> Self {
-        cx.busy("Pre-flight", "Counting files and testing the target's speed…");
+        cx.busy(
+            "Pre-flight",
+            "Counting files and testing the target's speed…",
+        );
         let (ready, resumable) = match prepare(&ctx, &sel, &target, cx.platform) {
             Ok(p) => (Ok((p.plan, p.pre, p.summary)), p.resumable),
             Err(e) => (Err(format!("{e:#}")), None),

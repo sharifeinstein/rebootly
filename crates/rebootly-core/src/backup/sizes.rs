@@ -44,7 +44,6 @@ pub fn sizes(plan: &Plan) -> BTreeMap<String, (u64, u64)> {
     m
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::bucket;

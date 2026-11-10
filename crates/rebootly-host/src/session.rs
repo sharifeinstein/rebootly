@@ -19,6 +19,16 @@ pub struct Account {
     pub has_hive: bool,
 }
 
+fn kind_words(k: rebootly_core::profiles::AccountKind) -> &'static str {
+    use rebootly_core::profiles::AccountKind as K;
+    match k {
+        K::Microsoft => "Microsoft account",
+        K::EntraId => "work or school account (Entra ID)",
+        K::LocalOrDomain => "local or domain account",
+        K::Unknown => "account",
+    }
+}
+
 /// What every backup screen shares once the source is open.
 pub struct BackupCtx {
     pub src: Box<dyn Source>,
@@ -42,7 +52,7 @@ impl BackupCtx {
             .profiles()?
             .into_iter()
             .map(|p| Account {
-                kind: format!("{:?}", p.kind),
+                kind: kind_words(p.kind).to_string(),
                 has_hive: p.hive.is_some(),
                 sid: p.sid,
                 username: p.username,

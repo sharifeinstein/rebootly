@@ -102,6 +102,19 @@ fn describe(b: Backup) -> FoundBackup {
     }
 }
 
+/// Files and bytes backed up for one user (`users/<name>/…`), e.g. for
+/// "Alice · 12.3 GiB · 4,567 files" when choosing whose files to restore.
+pub fn user_size(b: &Backup, username: &str) -> (usize, u64) {
+    let prefix = format!("users/{username}/");
+    b.manifest
+        .files
+        .iter()
+        .filter(|f| {
+            f.status == crate::backup::manifest::FileStatus::Ok && f.path.starts_with(&prefix)
+        })
+        .fold((0, 0), |a, f| (a.0 + 1, a.1 + f.size))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

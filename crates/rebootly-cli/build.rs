@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-fn main() {
+pub fn main() {
     let git = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.git");
     let head = git.join("HEAD");
     println!("cargo:rerun-if-changed={}", head.display());
