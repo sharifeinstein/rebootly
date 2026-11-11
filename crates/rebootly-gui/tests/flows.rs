@@ -273,19 +273,25 @@ fn locked_disk_unlocks_with_the_recovery_key() {
     g.click("Back up");
     g.click("Unlock E: · 256.0 GiB · locked with BitLocker · removable");
     g.wait("0 of 48 digits");
-    let field = || eframe::egui::Role::PasswordInput;
+    // Shown as typed (owner), not as a password field. Typed without
+    // dashes, in two goes: the dashes are added and the cursor stays at
+    // the end, so the second batch lands after the first.
+    let field = || eframe::egui::Role::TextInput;
+    let plain: String = KEY.chars().filter(char::is_ascii_digit).collect();
     g.h.get_by_role_and_label(field(), "Recovery key").click();
     g.h.step();
-    g.h.get_by_role_and_label(field(), "Recovery key")
-        .type_text(&KEY[..KEY.len() - 1]);
-    g.h.step();
+    for part in [&plain[..10], &plain[10..47]] {
+        g.h.get_by_role_and_label(field(), "Recovery key").type_text(part);
+        g.h.step();
+    }
+    g.wait("47 of 48 digits");
     g.click("Unlock");
     g.wait("this has 47");
     g.h.get_by_role_and_label(field(), "Recovery key").click();
     g.h.step();
     g.h.key_press(eframe::egui::Key::End);
     g.h.step();
-    g.h.get_by_role_and_label(field(), "Recovery key").type_text("4");
+    g.h.get_by_role_and_label(field(), "Recovery key").type_text(&plain[47..]);
     g.h.step();
     g.wait("48 of 48 digits");
     g.click("Unlock");

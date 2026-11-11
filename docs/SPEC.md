@@ -189,7 +189,7 @@ post_restore:
 ## 7. Offline environments
 
 ### 7.1 BitLocker unlock (inside the tool)
-Detect a BitLocker volume and prompt for the 48-digit recovery key (input masked, never logged).
+Detect a BitLocker volume and prompt for the 48-digit recovery key (shown as typed, in groups of 6 like Windows' own recovery screen, with a digit count and the first mistyped group; never logged; the CLI rewrites its prompt line after Enter so the key isn't left in the console).
 - WinPE: `manage-bde -unlock <X:> -RecoveryPassword <key>` (the image needs `WinPE-SecureStartup`). Also offered from Windows for another disk (GUI and text screens).
 - Linux: `cryptsetup open --type bitlk --readonly` (≥2.3), key on stdin; fallback `dislocker -r` (key in its arguments: dislocker has no other non-interactive input).
 - The key is checked first (48 digits, each group a multiple of 11 below 720 896), held as a secret, and scrubbed from any tool output shown. The screens show a dot per character and "N of 48 digits".

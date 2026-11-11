@@ -6,7 +6,7 @@ use std::sync::Arc;
 use eframe::egui::{self, RichText};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::{RecoveryKey, Volume};
+use rebootly_core::volume::{RecoveryKey, Volume, grouped_key, key_status};
 use rebootly_host::session::BackupCtx;
 
 use super::accounts::AccountsPage;
@@ -124,15 +124,26 @@ impl SourcePage {
         );
         ui.horizontal(|ui| {
             let l = ui.label("Recovery key");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.key)
-                    .password(true)
-                    .desired_width(460.0),
-            )
-            .labelled_by(l.id);
+            // Shown as typed, in groups of 6 (dashes are added), so it can
+            // be checked against the printout.
+            let out = egui::TextEdit::singleline(&mut self.key)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(460.0)
+                .show(ui);
+            let resp = out.response.response.clone().labelled_by(l.id);
+            if resp.changed() {
+                let g = grouped_key(&self.key);
+                if g != self.key {
+                    self.key = g;
+                    let mut st = out.state;
+                    let end = egui::text::CCursor::new(self.key.chars().count());
+                    st.cursor
+                        .set_char_range(Some(egui::text::CCursorRange::one(end)));
+                    st.store(ui.ctx(), resp.id);
+                }
+            }
         });
-        let n = self.key.chars().filter(char::is_ascii_digit).count();
-        ui.label(RichText::new(format!("{n} of 48 digits (dashes optional)")).weak());
+        ui.label(RichText::new(key_status(&self.key)).weak());
     }
 
     fn open(&mut self, cx: &Cx) {

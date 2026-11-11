@@ -5,6 +5,8 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 
+use rebootly_core::volume::key_status;
+
 use crate::ui::dim;
 use crate::widgets::TextField;
 
@@ -14,8 +16,8 @@ pub struct KeyEntry {
     pub field: TextField,
 }
 
-/// The key field: dots, and how many digits arrived so far (typing a long
-/// key blind is error-prone; the count shows a missed or doubled digit).
+/// The key field: the digits in groups of 6, as on Windows' own recovery
+/// screen, and how many arrived so far or which group has a typo.
 pub fn draw_key(f: &mut Frame, area: Rect, k: &KeyEntry) {
     let [label, field, count] = Layout::vertical([
         Constraint::Length(2),
@@ -33,12 +35,8 @@ pub fn draw_key(f: &mut Frame, area: Rect, k: &KeyEntry) {
         label,
     );
     k.field.draw(f, field, true);
-    let digits = k.field.value.chars().filter(char::is_ascii_digit).count();
     f.render_widget(
-        Paragraph::new(Line::styled(
-            format!("{digits} of 48 digits (dashes optional)"),
-            dim(),
-        )),
+        Paragraph::new(Line::styled(key_status(&k.field.value), dim())),
         count,
     );
 }

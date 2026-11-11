@@ -115,14 +115,22 @@ fn locked_disk_is_listed_and_unlocks_with_the_key() {
     assert!(s.contains("locked with BitLocker"), "{s}");
     assert!(!s.contains("Windows on"), "{s}");
 
-    // A short key: plain error, digit count, the field keeps what was typed.
+    // A short key: plain error, digit count, the field keeps what was typed
+    // and shows it (owner: digits, grouped, so it can be checked).
     let mut keys = vec![k(KeyCode::Enter)];
     keys.extend(text("12345"));
     keys.push(k(KeyCode::Enter));
     let (s, _) = screen(&keys);
     assert!(s.contains("48 digits"), "{s}");
     assert!(s.contains("5 of 48 digits"), "{s}");
-    assert!(!s.contains("12345"), "key shown on screen: {s}");
+    assert!(s.contains("> 12345"), "typed digits shown: {s}");
+
+    // Grouped as typed; a mistyped group is named at once.
+    let mut keys = vec![k(KeyCode::Enter)];
+    keys.extend(text("000000123454"));
+    let (s, _) = screen(&keys);
+    assert!(s.contains("> 000000-123454"), "{s}");
+    assert!(s.contains("group 2 isn't right"), "{s}");
 
     // The right key: unlocked, the install is listed and selected, the note
     // shown; Enter opens it (the accounts screen).
@@ -134,7 +142,7 @@ fn locked_disk_is_listed_and_unlocks_with_the_key() {
     assert!(s.contains("Windows on"), "{s}");
     assert!(s.contains("wasn't fully shut down"), "{s}");
     assert!(!s.contains("Unlock /dev/sda3"), "{s}");
-    assert!(!s.contains("123453"), "{s}");
+    assert!(!s.contains("123453"), "key left on screen after unlock: {s}");
     keys.push(k(KeyCode::Enter));
     let (s, _) = screen(&keys);
     assert!(s.contains("Alice"), "{s}");

@@ -7,6 +7,7 @@ pub mod app;
 pub mod backup;
 pub mod checklist;
 pub mod home;
+pub mod prompt;
 pub mod restore;
 pub mod textview;
 pub mod ui;

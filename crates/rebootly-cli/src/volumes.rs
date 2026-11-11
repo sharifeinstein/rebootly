@@ -76,15 +76,10 @@ fn key(file: Option<&Path>) -> anyhow::Result<RecoveryKey> {
             "The recovery key is 48 digits (8 groups of 6). Find it at aka.ms/myrecoverykey \
              or on the printout/USB saved when BitLocker was turned on."
         );
-        let s = rpassword::prompt_password("Recovery key: ")?;
-        let n = s.chars().filter(char::is_ascii_digit).count();
-        if n != 48 {
-            anyhow::bail!(
-                "the prompt received {n} digits, a recovery key has 48 (if you pasted it, type \
-                 it instead, or use --recovery-key-file)"
-            );
+        match rebootly_tui::prompt::recovery_key()? {
+            Some(s) => s,
+            None => anyhow::bail!("cancelled; nothing was unlocked"),
         }
-        s
     };
     Ok(RecoveryKey::parse(&raw)?)
 }

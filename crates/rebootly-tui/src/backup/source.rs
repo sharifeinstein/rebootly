@@ -11,7 +11,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::RecoveryKey;
+use rebootly_core::volume::{RecoveryKey, grouped_key};
 
 use super::{BackupCtx, preflight::PreflightScreen, users::UsersScreen};
 use crate::app::{Ctx, Nav, Screen};
@@ -148,7 +148,7 @@ impl SourceScreen {
             Choice::Locked(dev) => {
                 self.key = Some(KeyEntry {
                     device: dev.clone(),
-                    field: TextField::new("", true),
+                    field: TextField::new("", false),
                 });
                 return Nav::Stay;
             }
@@ -251,7 +251,10 @@ impl Screen for SourceScreen {
                     self.unlock(cx);
                 }
                 _ => {
-                    entry.field.key(&k);
+                    // Shown as typed, in groups of 6 (dashes are added).
+                    if entry.field.key(&k) {
+                        entry.field.value = grouped_key(&entry.field.value);
+                    }
                 }
             }
             return Nav::Stay;

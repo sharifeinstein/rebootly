@@ -7,7 +7,10 @@ pub mod key;
 pub mod mounted;
 
 pub use hiber::{HIBERNATED_NOTE, hibernated};
-pub use key::{KeyError, RecoveryKey};
+pub use key::{
+    KeyError, RecoveryKey, grouped as grouped_key, progress as key_progress,
+    typing_status as key_status,
+};
 pub use mounted::{MountedVolume, VolumeId, drive_letters, match_letters};
 
 use std::path::PathBuf;
