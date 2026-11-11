@@ -98,7 +98,9 @@ fn falls_back_to_dislocker_and_loop_mounts_its_file() {
     let got = m.open(&locked(), Some(&key)).unwrap();
     assert_eq!(got.root, base.path().join("sda3"));
     let lines = fake.lines();
-    assert!(lines[2].contains(&format!("{}/fve-sda3/dislocker-file", base.path().display())));
+    // Built with join, not "/": the tests also run on Windows (`\`).
+    let file = base.path().join("fve-sda3").join("dislocker-file");
+    assert!(lines[2].contains(&file.display().to_string()), "{lines:?}");
     assert!(m.release().is_empty());
 }
 
