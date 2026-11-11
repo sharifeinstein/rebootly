@@ -76,8 +76,11 @@ cp "$bin" "$out/linux-$short/rebootly-cli"
 
 step "Signing key for the image's package index"
 if ! ls "$HOME"/.abuild/*.rsa >/dev/null 2>&1; then
-    abuild-keygen -a -i -n
+    # Not -i: that installs the key through doas, which root doesn't need
+    # (and a container doesn't have).
+    PACKAGER=${PACKAGER:-"Rebootly build <build@rebootly.invalid>"} abuild-keygen -a -n
 fi
+cp "$HOME"/.abuild/*.rsa.pub /etc/apk/keys/
 
 work=$(mktemp -d /tmp/rebootly-iso.XXXXXX)
 trap 'rm -rf "$work"' EXIT
