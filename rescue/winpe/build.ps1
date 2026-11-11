@@ -3,7 +3,7 @@
   Builds the Rebootly WinPE rescue ISO: dist\rebootly-winpe-<arch>.iso.
 
 .DESCRIPTION
-  WinPE can't be redistributed, so everyone builds their own (SPEC §8).
+  WinPE can't be redistributed, so everyone builds their own (SPEC section 8).
   Needs, on this PC: the Windows ADK and its "Windows PE add-on"
   (https://learn.microsoft.com/windows-hardware/get-started/adk-install),
   and an elevated PowerShell (DISM).
