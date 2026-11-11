@@ -1,4 +1,5 @@
 use super::*;
+use rebootly_core::volume::{Password, RecoveryKey};
 use crate::cmd::fake::Fake;
 use std::sync::Arc;
 
@@ -44,7 +45,7 @@ fn cryptsetup_gets_the_key_on_stdin_and_everything_is_undone() {
         .expect("mount -t ntfs3 -o ro /dev/mapper/rebootly-sda3", 0, "", "")
         .expect("umount", 0, "", "")
         .expect("cryptsetup close rebootly-sda3", 0, "", "");
-    let key = RecoveryKey::parse(KEY).unwrap();
+    let key: Unlock = RecoveryKey::parse(KEY).unwrap().into();
     let got = m.open(&locked(), Some(&key)).unwrap();
     assert_eq!(got.root, base.path().join("sda3"));
     assert!(got.root.is_dir());
@@ -64,9 +65,25 @@ fn cryptsetup_gets_the_key_on_stdin_and_everything_is_undone() {
 fn a_wrong_key_says_so_without_the_key() {
     let (fake, m, _b) = setup(vec![]);
     fake.expect("cryptsetup open", 2, "", "No key available with this passphrase.");
-    let key = RecoveryKey::parse(KEY).unwrap();
+    let key: Unlock = RecoveryKey::parse(KEY).unwrap().into();
     let e = m.open(&locked(), Some(&key)).unwrap_err();
-    assert!(matches!(e, MountError::WrongKey), "{e}");
+    assert!(matches!(e, MountError::WrongKey("recovery key")), "{e}");
+}
+
+#[test]
+fn a_password_goes_to_cryptsetup_on_stdin_and_to_dislocker_as_user_password() {
+    let (fake, m, _b) = setup(vec![]);
+    fake.expect("cryptsetup open --type bitlk --readonly /dev/sda3", 2, "", "No key available.");
+    let pw: Unlock = Password::new("Sommer 2026!").unwrap().into();
+    let e = m.unlock("/dev/sda3", &pw).unwrap_err();
+    assert_eq!(e.to_string(), "the password doesn't unlock this disk; check it and try again");
+    let calls = fake.calls.lock().unwrap().clone();
+    assert_eq!(calls[0].stdin.as_deref(), Some(&b"Sommer 2026!\n"[..]));
+
+    let (fake, m, _b) = setup(vec!["cryptsetup"]);
+    fake.expect("dislocker -r -V /dev/sda3 -uSommer 2026!", 1, "", "Sommer 2026! wrong user password");
+    let e = m.unlock("/dev/sda3", &pw).unwrap_err().to_string();
+    assert!(e.contains("password doesn't unlock") && !e.contains("Sommer"), "{e}");
 }
 
 #[test]
@@ -77,7 +94,7 @@ fn falls_back_to_dislocker_and_loop_mounts_its_file() {
         .expect("mount -t ntfs3 -o ro,loop", 0, "", "")
         .expect("umount", 0, "", "")
         .expect("umount", 0, "", "");
-    let key = RecoveryKey::parse(KEY).unwrap();
+    let key: Unlock = RecoveryKey::parse(KEY).unwrap().into();
     let got = m.open(&locked(), Some(&key)).unwrap();
     assert_eq!(got.root, base.path().join("sda3"));
     let lines = fake.lines();
@@ -88,7 +105,7 @@ fn falls_back_to_dislocker_and_loop_mounts_its_file() {
 #[test]
 fn no_unlock_tool_and_tool_errors_are_scrubbed() {
     let (_f, m, _b) = setup(vec!["cryptsetup", "dislocker"]);
-    let key = RecoveryKey::parse(KEY).unwrap();
+    let key: Unlock = RecoveryKey::parse(KEY).unwrap().into();
     assert!(matches!(m.unlock("/dev/sda3", &key), Err(MountError::NoUnlockTool)));
 
     let (fake, m, _b) = setup(vec!["dislocker"]);

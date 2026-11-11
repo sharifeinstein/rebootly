@@ -10,12 +10,23 @@ pub const TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Run with a timeout; stdout returned on exit code 0.
 pub fn run_cmd(cmd: &mut Command) -> Result<Vec<u8>, String> {
+    run_with_input(cmd, None)
+}
+
+/// [`run_cmd`] with `input` written to stdin (secrets: never on a command
+/// line).
+pub fn run_with_input(cmd: &mut Command, input: Option<&[u8]>) -> Result<Vec<u8>, String> {
+    let stdin = if input.is_some() { Stdio::piped() } else { Stdio::null() };
     let mut child = cmd
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("not available ({e})"))?;
+    if let (Some(data), Some(mut w)) = (input, child.stdin.take()) {
+        // Dropped after writing, so the reader sees end of input.
+        let _ = std::io::Write::write_all(&mut w, data);
+    }
     let mut stdout = child.stdout.take();
     let reader = std::thread::spawn(move || {
         let mut buf = Vec::new();

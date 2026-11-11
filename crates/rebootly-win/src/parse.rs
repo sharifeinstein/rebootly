@@ -119,8 +119,13 @@ pub fn password(random: &[u8; 24]) -> String {
 
 /// PowerShell `-EncodedCommand` form: base64 of the UTF-16LE script.
 pub fn encode_command(script: &str) -> String {
-    const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    base64_encode(&bytes)
+}
+
+/// Standard base64 with padding.
+pub fn base64_encode(bytes: &[u8]) -> String {
+    const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for c in bytes.chunks(3) {
         let n = (u32::from(c[0]) << 16)
@@ -174,25 +179,6 @@ pub fn is_thumbprint(s: &str) -> bool {
 /// Can be passed as `name="…"` to netsh / schtasks without breaking quoting.
 pub fn quotable(s: &str) -> bool {
     !s.is_empty() && !s.contains(['"', '\0', '\r', '\n'])
-}
-
-/// A BitLocker volume's boot sector carries the OEM ID `-FVE-FS-` (bytes
-/// 3..11) where NTFS has `NTFS    `.
-pub fn is_bitlocker_boot_sector(sector: &[u8]) -> bool {
-    sector.get(3..11) == Some(b"-FVE-FS-")
-}
-
-/// `FVE_E_LOCKED_VOLUME`: what `GetVolumeInformationW` (and `dir`) fail
-/// with on a locked BitLocker volume. Raw reads of `\\.\X:` fail the same
-/// way, so the boot sector can't be relied on while it is locked.
-pub const FVE_E_LOCKED_VOLUME: u32 = 0x8031_0000;
-/// The same as an NTSTATUS (`STATUS_FVE_LOCKED_VOLUME`), in case it's
-/// passed through unmapped.
-const STATUS_FVE_LOCKED_VOLUME: u32 = 0xC021_0000;
-
-/// A failed volume call's last error says "locked by BitLocker".
-pub fn is_locked_volume_error(code: u32) -> bool {
-    code == FVE_E_LOCKED_VOLUME || code == STATUS_FVE_LOCKED_VOLUME
 }
 
 #[cfg(test)]
@@ -295,21 +281,11 @@ mod tests {
     }
 
     #[test]
-    fn bitlocker_boot_sector() {
-        let mut s = [0u8; 512];
-        s[3..11].copy_from_slice(b"-FVE-FS-");
-        assert!(super::is_bitlocker_boot_sector(&s));
-        s[3..11].copy_from_slice(b"NTFS    ");
-        assert!(!super::is_bitlocker_boot_sector(&s));
-        assert!(!super::is_bitlocker_boot_sector(b"abc"));
-    }
-
-    #[test]
-    fn locked_volume_error() {
-        assert!(super::is_locked_volume_error(0x8031_0000));
-        assert!(super::is_locked_volume_error(0xC021_0000));
-        // ERROR_NOT_READY (card reader without media), ERROR_ACCESS_DENIED
-        assert!(!super::is_locked_volume_error(21));
-        assert!(!super::is_locked_volume_error(5));
+    fn base64_pads() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"a"), "YQ==");
+        assert_eq!(base64_encode(b"ab"), "YWI=");
+        assert_eq!(base64_encode(b"abc"), "YWJj");
+        assert_eq!(base64_encode("é".as_bytes()), "w6k=");
     }
 }

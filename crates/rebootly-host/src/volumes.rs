@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rebootly_core::volume::{RecoveryKey, Volume};
+use rebootly_core::volume::{Unlock, Volume};
 use rebootly_core::{OfflineVolume, Source};
 
 /// Every volume Windows could use, as this system sees it now.
@@ -57,11 +57,12 @@ impl Volumes {
         self.mounter.keep();
     }
 
-    /// Unlock (with `key`) and mount `device` read-only.
+    /// Unlock (with the recovery key or password) and mount `device`
+    /// read-only.
     pub fn open(
         &self,
         device: &str,
-        key: Option<&RecoveryKey>,
+        key: Option<&Unlock>,
     ) -> anyhow::Result<(PathBuf, Vec<String>)> {
         let vols = list();
         let v = vols
@@ -71,7 +72,9 @@ impl Volumes {
         #[cfg(windows)]
         {
             if v.is_locked() {
-                let key = key.ok_or_else(|| anyhow::anyhow!("{device} needs a recovery key"))?;
+                let key = key.ok_or_else(|| {
+                    anyhow::anyhow!("{device} needs its recovery key or password")
+                })?;
                 rebootly_win::unlock_bitlocker(device, key).map_err(anyhow::Error::msg)?;
             }
             let root = PathBuf::from(format!("{}\\", v.device.trim_end_matches('\\')));

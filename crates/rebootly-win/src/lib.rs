@@ -8,8 +8,11 @@
 //! `SHGetKnownFolderPath` cross-check, Tier 4 command captures, sleep
 //! prevention, battery check, target filesystem type.
 //! M5: the restore target (current user's known folders) and `RestoreHost`.
-//! M7: drive letters as volumes, BitLocker lock state, `manage-bde` unlock.
+//! M7: drive letters as volumes, BitLocker lock state, unlock with the
+//! recovery key (`manage-bde`) or password (WMI), clipboard text.
 
+#[cfg_attr(not(windows), allow(dead_code))]
+mod bitlocker;
 #[cfg(windows)]
 mod live;
 #[cfg_attr(not(windows), allow(dead_code))]

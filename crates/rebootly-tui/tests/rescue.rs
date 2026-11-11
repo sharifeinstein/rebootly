@@ -10,11 +10,13 @@ use rebootly_core::Source;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, Target};
-use rebootly_core::volume::{RecoveryKey, Volume, VolumeState};
+use rebootly_core::volume::{Unlock, Volume, VolumeState};
 use rebootly_tui::app::run_app;
 use rebootly_tui::ui::{ScriptUi, k, text};
 use rebootly_tui::{Drive, Platform, first_screen};
 
+/// The drive's BitLocker password (the fake accepts it too).
+const PASSWORD: &str = "Sommer 2026!";
 const KEY: &str = "000000-000011-123453-720885-111111-222222-333333-444444";
 
 fn fixture() -> PathBuf {
@@ -66,10 +68,10 @@ impl Platform for Fake {
     fn open_volume(
         &self,
         device: &str,
-        key: Option<&RecoveryKey>,
+        key: Option<&Unlock>,
     ) -> anyhow::Result<(PathBuf, Vec<String>)> {
         assert_eq!(device, "/dev/sda3");
-        if key.map(RecoveryKey::expose) != Some(KEY) {
+        if !matches!(key.map(Unlock::expose), Some(KEY | PASSWORD)) {
             anyhow::bail!("the recovery key doesn't unlock this disk");
         }
         *self.unlocked.lock().unwrap() = true;
@@ -146,6 +148,21 @@ fn locked_disk_is_listed_and_unlocks_with_the_key() {
     keys.push(k(KeyCode::Enter));
     let (s, _) = screen(&keys);
     assert!(s.contains("Alice"), "{s}");
+}
+
+#[test]
+fn tab_switches_to_the_password_which_shows_as_dots() {
+    let mut keys = vec![k(KeyCode::Enter), k(KeyCode::Tab)];
+    keys.extend(text(PASSWORD));
+    let (s, _) = screen(&keys);
+    assert!(s.contains("Password for /dev/sda3"), "{s}");
+    assert!(s.contains("12 characters"), "{s}");
+    assert!(s.contains(&"•".repeat(12)), "{s}");
+    assert!(!s.contains("Sommer"), "password on screen: {s}");
+    keys.push(k(KeyCode::Enter));
+    let (s, p) = screen(&keys);
+    assert!(*p.unlocked.lock().unwrap());
+    assert!(s.contains("Windows on"), "{s}");
 }
 
 #[test]

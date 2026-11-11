@@ -1,16 +1,18 @@
 //! Volumes seen from WinPE or a Linux rescue system (SPEC §3.3, §7):
 //! what the platform backends (rebootly-linux, rebootly-win) report, the
-//! BitLocker recovery key, hibernation, and the offline drive letters.
+//! BitLocker recovery key or password, hibernation, and the offline drive letters.
 
 pub mod hiber;
 pub mod key;
 pub mod mounted;
+pub mod unlock;
 
 pub use hiber::{HIBERNATED_NOTE, hibernated};
 pub use key::{
     KeyError, RecoveryKey, find_key, grouped as grouped_key, pasted_digits as pasted_key_digits,
     progress as key_progress, tidy as tidy_key, typing_status as key_status,
 };
+pub use unlock::{Password, PasswordError, Unlock};
 pub use mounted::{MountedVolume, VolumeId, drive_letters, match_letters};
 
 use std::path::PathBuf;

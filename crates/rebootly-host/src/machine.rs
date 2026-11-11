@@ -9,7 +9,7 @@ use rebootly_core::backup::preflight::gib;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, SimHost, Target};
-use rebootly_core::volume::{RecoveryKey, Volume};
+use rebootly_core::volume::{Unlock, Volume};
 
 use crate::{Drive, Platform};
 
@@ -138,7 +138,7 @@ impl Platform for Machine {
     fn open_volume(
         &self,
         device: &str,
-        key: Option<&RecoveryKey>,
+        key: Option<&Unlock>,
     ) -> anyhow::Result<(PathBuf, Vec<String>)> {
         self.vols.open(device, key)
     }

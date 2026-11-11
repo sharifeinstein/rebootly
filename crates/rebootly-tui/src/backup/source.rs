@@ -11,7 +11,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::{RecoveryKey, tidy_key};
+use rebootly_core::volume::{Password, RecoveryKey, Unlock, tidy_key};
 
 use super::{BackupCtx, preflight::PreflightScreen, users::UsersScreen};
 use crate::app::{Ctx, Nav, Screen};
@@ -110,7 +110,16 @@ impl SourceScreen {
         let Some(entry) = self.key.take() else {
             return;
         };
-        let key = match RecoveryKey::parse(&entry.field.value) {
+        let parsed: Result<Unlock, String> = if entry.password {
+            Password::new(&entry.field.value)
+                .map(Unlock::from)
+                .map_err(|e| e.to_string())
+        } else {
+            RecoveryKey::parse(&entry.field.value)
+                .map(Unlock::from)
+                .map_err(|e| e.to_string())
+        };
+        let key = match parsed {
             Ok(k) => k,
             Err(e) => {
                 self.error = Some(e.to_string());
@@ -146,10 +155,7 @@ impl SourceScreen {
                 (cx.platform.open_offline(p), p.display().to_string())
             }
             Choice::Locked(dev) => {
-                self.key = Some(KeyEntry {
-                    device: dev.clone(),
-                    field: TextField::new("", false),
-                });
+                self.key = Some(KeyEntry::new(dev));
                 return Nav::Stay;
             }
             Choice::Type => {
@@ -250,16 +256,23 @@ impl Screen for SourceScreen {
                     self.error = None;
                     self.unlock(cx);
                 }
+                // Recovery key ↔ password; what was typed goes.
+                KeyCode::Tab => {
+                    entry.password = !entry.password;
+                    entry.field = TextField::new("", entry.password);
+                    self.error = None;
+                }
                 // Paste: the clipboard on Windows/WinPE (terminals elsewhere
                 // paste by typing); a whole key in the text wins.
                 _ if is_paste(&k) => {
                     if let Some(t) = rebootly_host::clipboard_text() {
-                        entry.field.value = tidy_key(&format!("{}{t}", entry.field.value));
+                        entry.paste(&t);
                     }
                 }
                 _ => {
-                    // Shown as typed, in groups of 6 (dashes are added).
-                    if entry.field.key(&k) {
+                    // A key is shown as typed, in groups of 6 (dashes are
+                    // added); a password as dots.
+                    if entry.field.key(&k) && !entry.password {
                         entry.field.value = tidy_key(&entry.field.value);
                     }
                 }

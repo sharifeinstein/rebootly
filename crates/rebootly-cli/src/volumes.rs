@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use clap::Args;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::{RecoveryKey, Volume, VolumeState};
+use rebootly_core::volume::{Password, RecoveryKey, Unlock, Volume, VolumeState};
 
 /// Recovery key: from a file, `$REBOOTLY_RECOVERY_KEY`, or a hidden prompt.
 pub const KEY_ENV: &str = "REBOOTLY_RECOVERY_KEY";
@@ -31,6 +31,13 @@ pub struct OpenArgs {
     /// File holding the 48-digit BitLocker recovery key.
     #[arg(long, value_name = "FILE")]
     recovery_key_file: Option<PathBuf>,
+    /// Unlock with the drive's BitLocker password instead (asked for; a
+    /// TPM PIN can't be used off the original PC's own boot).
+    #[arg(long, conflicts_with = "recovery_key_file")]
+    password: bool,
+    /// File holding the BitLocker password (first line).
+    #[arg(long, value_name = "FILE", conflicts_with_all = ["recovery_key_file", "password"])]
+    password_file: Option<PathBuf>,
 }
 
 fn row(v: &Volume) -> String {
@@ -44,7 +51,9 @@ fn row(v: &Volume) -> String {
             };
             format!("at {}{ro}{win}", root.display())
         }
-        VolumeState::Locked => "locked: rebootly-cli open <device>".into(),
+        VolumeState::Locked => {
+            "locked: rebootly-cli open <device> (recovery key), or add --password".into()
+        }
         VolumeState::Unmounted => "not mounted: rebootly-cli open <device>".into(),
     };
     format!("{}\n    {state}", v.describe())
@@ -63,6 +72,22 @@ pub fn list(args: VolumesArgs) -> anyhow::Result<u8> {
         println!("{}", row(v));
     }
     Ok(0)
+}
+
+/// The recovery key or password the arguments ask for.
+fn secret(args: &OpenArgs) -> anyhow::Result<Unlock> {
+    if let Some(f) = &args.password_file {
+        let s = std::fs::read_to_string(f)
+            .with_context(|| format!("reading password file {}", f.display()))?;
+        return Ok(Password::new(s.lines().next().unwrap_or(""))?.into());
+    }
+    if args.password {
+        return match rebootly_tui::prompt::password()? {
+            Some(s) => Ok(Password::new(&s)?.into()),
+            None => anyhow::bail!("cancelled; nothing was unlocked"),
+        };
+    }
+    Ok(key(args.recovery_key_file.as_deref())?.into())
 }
 
 fn key(file: Option<&Path>) -> anyhow::Result<RecoveryKey> {
@@ -96,15 +121,11 @@ pub fn open(args: OpenArgs) -> anyhow::Result<u8> {
         }
         return Ok(0);
     }
-    let dev = args.device.unwrap_or_default();
+    let dev = args.device.clone().unwrap_or_default();
     let locked = rebootly_host::volumes::list()
         .iter()
         .any(|v| v.device.eq_ignore_ascii_case(&dev) && v.is_locked());
-    let key = if locked {
-        Some(key(args.recovery_key_file.as_deref())?)
-    } else {
-        None
-    };
+    let key = if locked { Some(secret(&args)?) } else { None };
     let (root, notes) = vols.open(&dev, key.as_ref())?;
     for n in notes {
         eprintln!("{n}");

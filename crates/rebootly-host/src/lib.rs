@@ -22,7 +22,7 @@ use rebootly_core::Source;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, Target};
-use rebootly_core::volume::{RecoveryKey, Volume};
+use rebootly_core::volume::{Unlock, Volume};
 
 /// A drive or folder offered as a backup target (or searched for backups).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +57,7 @@ pub trait Platform: Send + Sync {
     fn open_volume(
         &self,
         device: &str,
-        key: Option<&RecoveryKey>,
+        key: Option<&Unlock>,
     ) -> anyhow::Result<(PathBuf, Vec<String>)> {
         let _ = key;
         anyhow::bail!("{device} can't be opened here")

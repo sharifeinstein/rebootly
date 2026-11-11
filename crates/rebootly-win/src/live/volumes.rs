@@ -8,7 +8,9 @@
 //! raw reads of `\\.\X:` are refused too while locked). Fallback: a boot
 //! sector (read through `\\.\X:`, needs admin) starting with `-FVE-FS-`.
 //! Unlocking runs `manage-bde -unlock X: -RecoveryPassword <key>` (WinPE
-//! needs the WinPE-SecureStartup component). Its output is never shown: the
+//! needs the WinPE-SecureStartup component), or for a password WMI's
+//! `UnlockWithPassphrase` through PowerShell (WinPE also needs
+//! WinPE-PowerShell and WinPE-WMI). Its output is never shown: the
 //! key isn't echoed, but nothing from the command is trusted with it.
 #![allow(unsafe_code)]
 
@@ -16,16 +18,19 @@ use std::io::Read;
 use std::process::Command;
 use std::ptr::null_mut;
 
-use rebootly_core::volume::{RecoveryKey, Volume, VolumeId, VolumeState};
+use rebootly_core::volume::{RecoveryKey, Unlock, Volume, VolumeId, VolumeState};
 use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::Storage::FileSystem::{
     GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW,
 };
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY, RegGetValueW};
 
-use super::cmd::run_cmd;
+use super::cmd::{powershell, run_cmd, run_with_input};
 use super::wide::wide;
-use crate::parse::{is_bitlocker_boot_sector, is_locked_volume_error};
+use crate::bitlocker::{
+    is_bitlocker_boot_sector, is_locked_volume_error, parse_unlock_answer, unlock_script,
+};
+use crate::parse::base64_encode;
 
 const DRIVE_REMOVABLE: u32 = 2;
 const DRIVE_FIXED: u32 = 3;
@@ -150,16 +155,25 @@ pub fn volumes() -> Vec<Volume> {
     out
 }
 
-/// Unlock a BitLocker drive letter with its recovery key.
-pub fn unlock(device: &str, key: &RecoveryKey) -> Result<(), String> {
+/// Unlock a BitLocker drive letter with its recovery key (manage-bde) or
+/// password (WMI `UnlockWithPassphrase`: manage-bde only asks for a
+/// password interactively).
+pub fn unlock(device: &str, key: &Unlock) -> Result<(), String> {
     let letter = device.trim_end_matches(['\\', ':']);
     if letter.len() != 1 || !letter.chars().all(|c| c.is_ascii_alphabetic()) {
         return Err(format!("{device} is not a drive letter"));
     }
     let drive = format!("{}:", letter.to_ascii_uppercase());
+    match key {
+        Unlock::Key(k) => unlock_with_key(&drive, k),
+        Unlock::Password(p) => unlock_with_password(&drive, p.expose()),
+    }
+}
+
+fn unlock_with_key(drive: &str, key: &RecoveryKey) -> Result<(), String> {
     let res = run_cmd(Command::new("manage-bde").args([
         "-unlock",
-        &drive,
+        drive,
         "-RecoveryPassword",
         key.expose(),
     ]));
@@ -173,5 +187,23 @@ pub fn unlock(device: &str, key: &RecoveryKey) -> Result<(), String> {
         Err(e) => Err(format!(
             "{drive} wasn't unlocked (manage-bde {e}); check the recovery key and try again"
         )),
+    }
+}
+
+fn unlock_with_password(drive: &str, password: &str) -> Result<(), String> {
+    // The password arrives on stdin as base64 of UTF-8: nothing on the
+    // command line, and the console code page can't mangle it.
+    let mut input = base64_encode(password.as_bytes()).into_bytes();
+    input.push(b'\n');
+    let out = run_with_input(&mut powershell(&unlock_script(drive)), Some(&input));
+    match out {
+        Ok(stdout) => parse_unlock_answer(&String::from_utf8_lossy(&stdout), drive),
+        Err(e) if e.starts_with("not available") => Err(
+            "PowerShell isn't available here; a WinPE image needs WinPE-PowerShell, \
+             WinPE-WMI and WinPE-SecureStartup to unlock with a password (the recovery key \
+             needs only manage-bde)"
+                .into(),
+        ),
+        Err(e) => Err(format!("{drive} wasn't unlocked (PowerShell {e})")),
     }
 }

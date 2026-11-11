@@ -3,10 +3,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eframe::egui::{self, RichText};
+use eframe::egui;
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::{RecoveryKey, Volume, key_status, tidy_key};
+use rebootly_core::volume::Volume;
+
+use super::unlock_field::UnlockField;
 use rebootly_host::session::BackupCtx;
 
 use super::accounts::AccountsPage;
@@ -51,8 +53,8 @@ pub struct SourcePage {
     other: String,
     opening: Option<Task<anyhow::Result<BackupCtx>>>,
     error: Option<String>,
-    /// Recovery key being typed for `Pick::Locked`.
-    key: String,
+    /// Recovery key or password being typed for `Pick::Locked`.
+    key: UnlockField,
     unlocking: Option<Task<Unlocked>>,
     /// Notes from unlocking (e.g. the Windows was hibernated).
     notes: Vec<String>,
@@ -68,7 +70,7 @@ impl SourcePage {
             other: String::new(),
             opening: None,
             error: None,
-            key: String::new(),
+            key: UnlockField::default(),
             unlocking: None,
             notes: Vec::new(),
         }
@@ -76,10 +78,10 @@ impl SourcePage {
 
     fn unlock(&mut self, cx: &Cx, device: String) {
         self.error = None;
-        let key = match RecoveryKey::parse(&self.key) {
+        let key = match self.key.parse() {
             Ok(k) => k,
             Err(e) => {
-                self.error = Some(e.to_string());
+                self.error = Some(e);
                 return;
             }
         };
@@ -115,36 +117,7 @@ impl SourcePage {
             }
             return;
         }
-        ui.label(
-            RichText::new(
-                "Recovery key (48 digits): for a Microsoft account at aka.ms/myrecoverykey, or \
-                 on the printout/USB saved when BitLocker was turned on.",
-            )
-            .weak(),
-        );
-        ui.horizontal(|ui| {
-            let l = ui.label("Recovery key");
-            // Shown as typed, in groups of 6 (dashes are added), so it can
-            // be checked against the printout. A pasted page with the key
-            // ID and date around the key: the key is picked out.
-            let out = egui::TextEdit::singleline(&mut self.key)
-                .font(egui::TextStyle::Monospace)
-                .desired_width(460.0)
-                .show(ui);
-            let resp = out.response.response.clone().labelled_by(l.id);
-            if resp.changed() {
-                let g = tidy_key(&self.key);
-                if g != self.key {
-                    self.key = g;
-                    let mut st = out.state;
-                    let end = egui::text::CCursor::new(self.key.chars().count());
-                    st.cursor
-                        .set_char_range(Some(egui::text::CCursorRange::one(end)));
-                    st.store(ui.ctx(), resp.id);
-                }
-            }
-        });
-        ui.label(RichText::new(key_status(&self.key)).weak());
+        self.key.ui(ui);
     }
 
     fn open(&mut self, cx: &Cx) {
@@ -263,7 +236,7 @@ impl Page for SourcePage {
             warning(ui, n);
         }
         if let Pick::Locked(dev) = self.pick.clone() {
-            let ready = self.unlocking.is_none() && !self.key.trim().is_empty();
+            let ready = self.unlocking.is_none() && !self.key.text.trim().is_empty();
             if primary(ui, "Unlock", ready) {
                 self.unlock(cx, dev);
             }

@@ -1,30 +1,14 @@
-//! One-line recovery-key prompt for `rebootly-cli open` (no full screen):
-//! the digits are shown as typed, in groups of 6 like Windows' own recovery
-//! screen, with a count or the group that has a typo. After Enter the line
+//! The recovery-key line of `rebootly-cli open`: the digits are shown as
+//! typed, in groups of 6 like Windows' own recovery screen, with a count or the group that has a typo. After Enter the line
 //! is rewritten as "entered", so the key isn't left in the console's
 //! history (or in output pasted elsewhere). Ctrl+V / Shift+Insert paste
 //! from the clipboard; a page copied with the key ID and date around the
 //! key works too (the key is found in it).
 
-use std::io::{self, BufRead, IsTerminal, Write};
-
-use ratatui::crossterm::cursor::MoveToColumn;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::crossterm::style::Print;
-use ratatui::crossterm::terminal::{self, Clear, ClearType};
-use ratatui::crossterm::{execute, queue};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rebootly_core::volume::{find_key, grouped_key, key_progress, pasted_key_digits};
 
-/// What a key press did to the line.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Step {
-    Continue,
-    /// 48 digits, every group plausible.
-    Done(String),
-    Cancel,
-    /// Ctrl+V / Shift+Insert: read the clipboard and call [`KeyLine::paste`].
-    Paste,
-}
+use super::{LineEdit, Step, common};
 
 /// The line being typed (digits only; dashes are only shown).
 #[derive(Default)]
@@ -34,20 +18,14 @@ pub struct KeyLine {
     note: Option<&'static str>,
 }
 
-impl KeyLine {
-    pub fn key(&mut self, k: &KeyEvent) -> Step {
-        // Windows reports releases too; only presses type.
-        if k.kind != KeyEventKind::Press {
-            return Step::Continue;
+impl LineEdit for KeyLine {
+    fn key(&mut self, k: &KeyEvent) -> Step {
+        if let Some(step) = common(k) {
+            return step;
         }
         self.note = None;
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-        let shift = k.modifiers.contains(KeyModifiers::SHIFT);
         match k.code {
-            KeyCode::Char('c') if ctrl => return Step::Cancel,
-            KeyCode::Char('v') if ctrl => return Step::Paste,
-            KeyCode::Insert if shift => return Step::Paste,
-            KeyCode::Esc => return Step::Cancel,
             KeyCode::Char(c) if c.is_ascii_digit() && !ctrl && self.digits.len() < 48 => {
                 self.digits.push(c);
             }
@@ -64,7 +42,7 @@ impl KeyLine {
 
     /// Pasted text: a whole key in it replaces the line; part of a key
     /// (digits, dashes, spaces) is added; anything else is refused.
-    pub fn paste(&mut self, text: Option<&str>) {
+    fn paste(&mut self, text: Option<&str>) {
         if let Some(k) = text.and_then(find_key) {
             self.digits = k.replace('-', "");
         } else if let Some(d) = text.and_then(pasted_key_digits) {
@@ -75,9 +53,8 @@ impl KeyLine {
         }
     }
 
-    /// The line as shown; at most 79 columns (fits an 80-column console,
-    /// so redrawing in place never wraps).
-    pub fn render(&self) -> String {
+    /// At most 79 columns.
+    fn render(&self) -> String {
         let (n, bad) = key_progress(&self.digits);
         let status = match (self.note, bad) {
             (Some(note), _) => note.to_string(),
@@ -86,71 +63,21 @@ impl KeyLine {
         };
         format!("Key: {}  {status}", grouped_key(&self.digits))
     }
-}
 
-/// Undoes raw mode however the prompt ends.
-struct Raw;
-
-impl Drop for Raw {
-    fn drop(&mut self) {
-        let _ = terminal::disable_raw_mode();
+    fn entered(&self) -> String {
+        "Key: entered (48 digits)".into()
     }
-}
 
-/// Ask for a recovery key on the terminal; `None` if cancelled. Without a
-/// terminal (piped input) one line is read as is.
-pub fn recovery_key() -> io::Result<Option<String>> {
-    let mut err = io::stderr();
-    if !io::stdin().is_terminal() {
-        let mut s = String::new();
-        io::stdin().lock().read_line(&mut s)?;
-        return Ok(Some(s));
-    }
-    writeln!(
-        err,
-        "Type the digits (dashes are added). Enter when done, Esc to cancel."
-    )?;
-    let mut line = KeyLine::default();
-    terminal::enable_raw_mode()?;
-    let _raw = Raw;
-    let show = |err: &mut io::Stderr, text: &str| -> io::Result<()> {
-        queue!(err, MoveToColumn(0), Clear(ClearType::CurrentLine), Print(text))?;
-        err.flush()
-    };
-    show(&mut err, &line.render())?;
-    loop {
-        let step = match event::read()? {
-            Event::Key(k) => line.key(&k),
-            // A terminal's own paste (bracketed, on Unix terminals).
-            Event::Paste(text) => {
-                line.paste(Some(&text));
-                Step::Continue
-            }
-            _ => continue,
-        };
-        match step {
-            Step::Continue => show(&mut err, &line.render())?,
-            Step::Paste => {
-                line.paste(rebootly_host::clipboard_text().as_deref());
-                show(&mut err, &line.render())?;
-            }
-            Step::Done(key) => {
-                show(&mut err, "Key: entered (48 digits)")?;
-                execute!(err, Print("\r\n"))?;
-                return Ok(Some(key));
-            }
-            Step::Cancel => {
-                show(&mut err, "Key: cancelled")?;
-                execute!(err, Print("\r\n"))?;
-                return Ok(None);
-            }
-        }
+    fn cancelled(&self) -> &'static str {
+        "Key: cancelled"
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prompt::{LineEdit, Step};
+    use ratatui::crossterm::event::KeyEventKind;
 
     fn press(c: KeyCode) -> KeyEvent {
         KeyEvent::new(c, KeyModifiers::NONE)

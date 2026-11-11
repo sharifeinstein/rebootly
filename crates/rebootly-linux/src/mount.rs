@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rebootly_core::volume::{RecoveryKey, Volume, VolumeState};
+use rebootly_core::volume::{Unlock, Volume, VolumeState};
 
 use crate::cmd::{Runner, last_line};
 
@@ -21,8 +21,9 @@ pub const BASE: &str = "/run/rebootly";
 
 #[derive(Debug, thiserror::Error)]
 pub enum MountError {
-    #[error("the recovery key doesn't unlock this disk; check it and try again")]
-    WrongKey,
+    /// The recovery key or password (named) wasn't accepted.
+    #[error("the {0} doesn't unlock this disk; check it and try again")]
+    WrongKey(&'static str),
     #[error(
         "unlocking BitLocker needs cryptsetup (2.3 or newer) or dislocker, and neither is installed"
     )]
@@ -99,8 +100,10 @@ impl Mounter {
         Ok(d)
     }
 
-    /// Unlock a BitLocker partition read-only; returns the device to mount.
-    pub fn unlock(&self, device: &str, key: &RecoveryKey) -> Result<String, MountError> {
+    /// Unlock a BitLocker partition read-only with its recovery key or
+    /// password (cryptsetup tries both kinds of key slot with what it's
+    /// given; dislocker needs to be told which); returns the device to mount.
+    pub fn unlock(&self, device: &str, key: &Unlock) -> Result<String, MountError> {
         let name = format!("rebootly-{}", short(device));
         if self.run.has("cryptsetup") {
             let mut stdin = key.expose().as_bytes().to_vec();
@@ -116,7 +119,7 @@ impl Mounter {
             }
             // Exit code 2: no key slot accepted the passphrase.
             if out.code == Some(2) {
-                return Err(MountError::WrongKey);
+                return Err(MountError::WrongKey(key.what()));
             }
             if !self.run.has("dislocker") {
                 return Err(MountError::Failed {
@@ -130,7 +133,8 @@ impl Mounter {
         }
         let fve = self.dir(&format!("fve-{}", short(device)))?;
         let fve_s = fve.to_string_lossy().into_owned();
-        let p = format!("-p{}", key.expose());
+        let flag = if key.is_password() { "-u" } else { "-p" };
+        let p = format!("{flag}{}", key.expose());
         let out = self
             .run
             .run("dislocker", &["-r", "-V", device, &p, "--", &fve_s], None)?;
@@ -139,7 +143,7 @@ impl Mounter {
             if detail.to_ascii_lowercase().contains("password")
                 || detail.to_ascii_lowercase().contains("vmk")
             {
-                return Err(MountError::WrongKey);
+                return Err(MountError::WrongKey(key.what()));
             }
             return Err(MountError::Failed {
                 step: "dislocker",
@@ -189,7 +193,7 @@ impl Mounter {
     }
 
     /// Unlock (if needed) and mount `v`; already mounted volumes are left.
-    pub fn open(&self, v: &Volume, key: Option<&RecoveryKey>) -> Result<Mounted, MountError> {
+    pub fn open(&self, v: &Volume, key: Option<&Unlock>) -> Result<Mounted, MountError> {
         match (&v.state, key) {
             (VolumeState::Mounted { root, .. }, _) => Ok(Mounted {
                 root: root.clone(),
@@ -201,7 +205,8 @@ impl Mounter {
             }
             (VolumeState::Locked, None) => Err(MountError::Failed {
                 step: "opening",
-                detail: "the disk is locked with BitLocker; a recovery key is needed".into(),
+                detail: "the disk is locked with BitLocker; its recovery key or password is needed"
+                    .into(),
             }),
             (VolumeState::Unmounted, _) => self.mount(&v.device, &v.device),
         }
@@ -289,11 +294,14 @@ pub fn close_all_in(run: &dyn Runner, base: &Path, mountinfo: &str, mapper: &[St
     errs
 }
 
-/// Never let the key reach a message, even if a tool echoes it.
-fn scrub(s: &str, key: &RecoveryKey) -> String {
+/// Never let the key or password reach a message, even if a tool echoes it.
+fn scrub(s: &str, key: &Unlock) -> String {
     let k = key.expose();
-    let plain: String = k.chars().filter(|c| *c != '-').collect();
-    s.replace(k, "…").replace(&plain, "…")
+    let out = s.replace(k, "…");
+    match key {
+        Unlock::Key(_) => out.replace(&k.replace('-', ""), "…"),
+        Unlock::Password(_) => out,
+    }
 }
 
 /// Plain-language notes from the NTFS drivers' messages.

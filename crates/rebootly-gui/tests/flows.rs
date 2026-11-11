@@ -12,7 +12,7 @@ use rebootly_core::Source;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, SimHost, Target};
-use rebootly_core::volume::{RecoveryKey, Volume, VolumeState};
+use rebootly_core::volume::{Unlock, Volume, VolumeState};
 use rebootly_gui::RebootlyApp;
 use rebootly_host::{Drive, Platform};
 
@@ -28,6 +28,8 @@ struct Fake {
     unlocked: std::sync::Mutex<bool>,
 }
 
+/// The drive's BitLocker password (the fake accepts it too).
+const PASSWORD: &str = "Sommer 2026!";
 const KEY: &str = "000000-000011-123453-720885-111111-222222-333333-444444";
 
 impl Platform for Fake {
@@ -64,9 +66,9 @@ impl Platform for Fake {
     fn open_volume(
         &self,
         _: &str,
-        key: Option<&RecoveryKey>,
+        key: Option<&Unlock>,
     ) -> anyhow::Result<(PathBuf, Vec<String>)> {
-        if key.map(RecoveryKey::expose) != Some(KEY) {
+        if !matches!(key.map(Unlock::expose), Some(KEY | PASSWORD)) {
             anyhow::bail!("E: wasn't unlocked; check the recovery key");
         }
         *self.unlocked.lock().unwrap() = true;
@@ -300,4 +302,23 @@ fn locked_disk_unlocks_with_the_recovery_key() {
     assert!(g.h.query_all_by_label_contains("Unlock E:").next().is_none());
     g.click("Next"); // the unlocked install is picked
     g.wait("Alice");
+}
+
+#[test]
+fn locked_disk_unlocks_with_its_password() {
+    let t = tempfile::tempdir().unwrap();
+    let mut g = Gui::with(t.path(), true);
+    g.click("Back up");
+    g.click("Unlock E: · 256.0 GiB · locked with BitLocker · removable");
+    g.click("Password");
+    g.wait("0 characters");
+    let field = || eframe::egui::Role::PasswordInput;
+    g.h.get_by_role_and_label(field(), "Password").click();
+    g.h.step();
+    g.h.get_by_role_and_label(field(), "Password").type_text(PASSWORD);
+    g.h.step();
+    g.wait("12 characters");
+    g.click("Unlock");
+    g.wait("Windows on");
+    assert!(g.h.query_all_by_label_contains("Unlock E:").next().is_none());
 }
