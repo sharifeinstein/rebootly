@@ -9,6 +9,7 @@ mod sensitive;
 mod source;
 mod tui;
 mod undo;
+mod volumes;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -67,6 +68,13 @@ enum Cmd {
     /// Open an encrypted sensitive bundle (`sensitive.age`).
     #[command(subcommand)]
     Sensitive(sensitive::SensitiveCmd),
+    /// List the volumes Windows could be on (NTFS, exFAT, BitLocker).
+    Volumes(volumes::VolumesArgs),
+    /// Unlock a BitLocker volume and/or mount it read-only (Linux), and
+    /// leave it open for `inspect` and `backup --windows-root`.
+    Open(volumes::OpenArgs),
+    /// Unmount and close what `open` left open (Linux).
+    Close,
 }
 
 fn main() -> ExitCode {
@@ -113,6 +121,9 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
         Cmd::Undo(args) => undo::run(args),
         Cmd::Pack(cmd) => pack::run(cmd),
         Cmd::Sensitive(cmd) => sensitive::run(cmd),
+        Cmd::Volumes(args) => volumes::list(args),
+        Cmd::Open(args) => volumes::open(args),
+        Cmd::Close => volumes::close(),
     }
 }
 

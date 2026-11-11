@@ -3,52 +3,136 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eframe::egui;
+use eframe::egui::{self, RichText};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
+use rebootly_core::volume::{RecoveryKey, Volume};
 use rebootly_host::session::BackupCtx;
 
 use super::accounts::AccountsPage;
 use super::preflight::PreflightPage;
 use crate::app::{Cx, Nav, Page};
 use crate::task::Task;
-use crate::widgets::{busy, choice, error, folder_field, intro, primary};
+use crate::widgets::{busy, choice, error, folder_field, intro, primary, warning};
 
 #[derive(Clone, PartialEq)]
 enum Pick {
     Live,
     Install(PathBuf),
+    /// A BitLocker-locked drive (device), unlocked with its recovery key.
+    Locked(String),
     Other,
+}
+
+/// Installations found, and locked drives that may hold more.
+struct Scan {
+    installs: Vec<PathBuf>,
+    locked: Vec<Volume>,
+}
+
+type Unlocked = anyhow::Result<(PathBuf, Vec<String>)>;
+
+fn scan(cx: &Cx) -> Task<Scan> {
+    let p = cx.platform.clone();
+    Task::spawn(&cx.ctx, move || Scan {
+        installs: WindowsInstall::scan(&p.install_roots())
+            .into_iter()
+            .map(|i| i.volume_root)
+            .collect(),
+        locked: p.volumes().into_iter().filter(Volume::is_locked).collect(),
+    })
 }
 
 pub struct SourcePage {
     live: bool,
     job: Option<(JobProfile, PathBuf)>,
-    installs: Task<Vec<PathBuf>>,
+    installs: Task<Scan>,
     pick: Pick,
     other: String,
     opening: Option<Task<anyhow::Result<BackupCtx>>>,
     error: Option<String>,
+    /// Recovery key being typed for `Pick::Locked`.
+    key: String,
+    unlocking: Option<Task<Unlocked>>,
+    /// Notes from unlocking (e.g. the Windows was hibernated).
+    notes: Vec<String>,
 }
 
 impl SourcePage {
     pub fn new(cx: &mut Cx, live: bool, job: Option<(JobProfile, PathBuf)>) -> Self {
-        let roots = cx.platform.install_roots();
-        let installs = Task::spawn(&cx.ctx, move || {
-            WindowsInstall::scan(&roots)
-                .into_iter()
-                .map(|i| i.volume_root)
-                .collect()
-        });
         SourcePage {
             live,
             job,
-            installs,
+            installs: scan(cx),
             pick: if live { Pick::Live } else { Pick::Other },
             other: String::new(),
             opening: None,
             error: None,
+            key: String::new(),
+            unlocking: None,
+            notes: Vec::new(),
         }
+    }
+
+    fn unlock(&mut self, cx: &Cx, device: String) {
+        self.error = None;
+        let key = match RecoveryKey::parse(&self.key) {
+            Ok(k) => k,
+            Err(e) => {
+                self.error = Some(e.to_string());
+                return;
+            }
+        };
+        let p = cx.platform.clone();
+        self.unlocking = Some(Task::spawn(&cx.ctx, move || {
+            p.open_volume(&device, Some(&key))
+        }));
+    }
+
+    /// The locked drive's key field and progress.
+    fn locked_ui(&mut self, ui: &mut egui::Ui, cx: &Cx) {
+        if let Some(t) = &mut self.unlocking {
+            match t.take() {
+                None => busy(ui, "Unlocking the disk (this can take a minute)…"),
+                Some(Ok((root, notes))) => {
+                    self.unlocking = None;
+                    self.key.clear();
+                    self.notes.extend(notes);
+                    // A data drive: its letter now maps for the backup.
+                    self.pick = if WindowsInstall::from_path(&root).is_some() {
+                        Pick::Install(root)
+                    } else if self.live {
+                        Pick::Live
+                    } else {
+                        Pick::Other
+                    };
+                    self.installs = scan(cx);
+                }
+                Some(Err(e)) => {
+                    self.unlocking = None;
+                    self.error = Some(format!("{e:#}"));
+                }
+            }
+            return;
+        }
+        ui.label(
+            RichText::new(
+                "Recovery key (48 digits): for a Microsoft account at aka.ms/myrecoverykey, or \
+                 on the printout/USB saved when BitLocker was turned on.",
+            )
+            .weak(),
+        );
+        ui.horizontal(|ui| {
+            let l = ui.label("Recovery key");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.key)
+                    .password(true)
+                    .desired_width(460.0),
+            )
+            .labelled_by(l.id);
+        });
+        let n = self.key.chars().filter(char::is_ascii_digit).count();
+        ui.label(RichText::new(format!("{n} of 48 digits (dashes optional)")).weak());
     }
 
     fn open(&mut self, cx: &Cx) {
@@ -61,6 +145,7 @@ impl SourcePage {
                 Pick::Live => (p.open_live()?, "This PC".to_string()),
                 Pick::Install(r) => (p.open_offline(&r)?, r.display().to_string()),
                 Pick::Other => (p.open_offline(&other)?, other.display().to_string()),
+                Pick::Locked(d) => anyhow::bail!("{d} is still locked"),
             };
             BackupCtx::new(src, label, p.packs())
         }));
@@ -98,8 +183,9 @@ impl Page for SourcePage {
         }
         if self.installs.pending() {
             busy(ui, "Looking for Windows on other disks…");
-        } else if let Some(list) = self.installs.get() {
-            for r in list.clone() {
+        } else if let Some(found) = self.installs.get() {
+            let (list, locked) = (found.installs.clone(), found.locked.clone());
+            for r in list {
                 let title = format!("Windows on {}", r.display());
                 if choice(
                     ui,
@@ -108,6 +194,22 @@ impl Page for SourcePage {
                     "Another disk, read without starting it.",
                 ) {
                     self.pick = Pick::Install(r);
+                }
+            }
+            for v in locked {
+                let title = format!("Unlock {}", v.describe());
+                let pick = Pick::Locked(v.device.clone());
+                if choice(
+                    ui,
+                    self.pick == pick,
+                    &title,
+                    "Locked with BitLocker: unlock it with its recovery key.",
+                ) {
+                    self.pick = pick;
+                    self.error = None;
+                }
+                if self.pick == Pick::Locked(v.device) {
+                    self.locked_ui(ui, cx);
                 }
             }
         }
@@ -144,6 +246,16 @@ impl Page for SourcePage {
         }
         if let Some(e) = &self.error {
             error(ui, e);
+        }
+        for n in &self.notes {
+            warning(ui, n);
+        }
+        if let Pick::Locked(dev) = self.pick.clone() {
+            let ready = self.unlocking.is_none() && !self.key.trim().is_empty();
+            if primary(ui, "Unlock", ready) {
+                self.unlock(cx, dev);
+            }
+            return Nav::Stay;
         }
         let ready =
             self.opening.is_none() && (self.pick != Pick::Other || !self.other.trim().is_empty());

@@ -63,6 +63,10 @@ pub struct PlanOptions {
 pub struct Plan {
     pub source: SourceInfo,
     pub source_root: PathBuf,
+    /// The source's other drive letters read from here (offline).
+    pub other_drives: Vec<(char, PathBuf)>,
+    /// Notes about the source for pre-flight (also in `warnings`).
+    pub source_notes: Vec<String>,
     pub users: Vec<UserRecord>,
     /// Sorted by (priority, destination path).
     pub files: Vec<PlannedFile>,
@@ -118,8 +122,11 @@ pub fn plan(src: &dyn Source, opts: &PlanOptions) -> Result<Plan, SourceError> {
             environment: src.environment().as_str().into(),
         },
         source_root: src.source_root().to_path_buf(),
+        other_drives: src.other_drives(),
+        source_notes: src.source_notes(),
         ..Plan::default()
     };
+    plan.warnings.extend(plan.source_notes.iter().cloned());
     plan.labels.insert(HIVES_PRIORITY, HIVES_LABEL.into());
     plan.labels.insert(PACK_PRIORITY, "App packs".into());
     plan.labels.insert(PUBLIC_PRIORITY, "Public".into());

@@ -15,6 +15,7 @@ pub mod profiles;
 pub mod regfile;
 pub mod restore;
 pub mod source;
+pub mod volume;
 pub mod winpath;
 
 pub use hive::{Hive, HiveError};

@@ -1,0 +1,155 @@
+//! Rescue flow with a BitLocker-locked disk: unlock with the recovery key,
+//! then the Windows on it is listed and chosen.
+
+use std::any::Any;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use rebootly_core::Source;
+use rebootly_core::env::Environment;
+use rebootly_core::packs::schema::CompiledPack;
+use rebootly_core::restore::{RestoreHost, Target};
+use rebootly_core::volume::{RecoveryKey, Volume, VolumeState};
+use rebootly_tui::app::run_app;
+use rebootly_tui::ui::{ScriptUi, k, text};
+use rebootly_tui::{Drive, Platform, first_screen};
+
+const KEY: &str = "000000-000011-123453-720885-111111-222222-333333-444444";
+
+fn fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/win11-basic")
+}
+
+#[derive(Default)]
+struct Fake {
+    unlocked: Mutex<bool>,
+    prepared: Mutex<bool>,
+}
+
+impl Platform for Fake {
+    fn environment(&self) -> Environment {
+        Environment::Linux
+    }
+    fn version(&self) -> String {
+        "test".into()
+    }
+    fn open_live(&self) -> anyhow::Result<Box<dyn Source>> {
+        anyhow::bail!("not live")
+    }
+    fn install_roots(&self) -> Vec<PathBuf> {
+        if *self.unlocked.lock().unwrap() {
+            vec![fixture()]
+        } else {
+            Vec::new()
+        }
+    }
+    fn volumes(&self) -> Vec<Volume> {
+        let state = if *self.unlocked.lock().unwrap() {
+            VolumeState::Mounted {
+                root: fixture(),
+                read_only: true,
+            }
+        } else {
+            VolumeState::Locked
+        };
+        vec![Volume {
+            device: "/dev/sda3".into(),
+            label: None,
+            size: Some(256 << 30),
+            fs: Some("BitLocker".into()),
+            state,
+            id: None,
+            removable: false,
+        }]
+    }
+    fn open_volume(
+        &self,
+        device: &str,
+        key: Option<&RecoveryKey>,
+    ) -> anyhow::Result<(PathBuf, Vec<String>)> {
+        assert_eq!(device, "/dev/sda3");
+        if key.map(RecoveryKey::expose) != Some(KEY) {
+            anyhow::bail!("the recovery key doesn't unlock this disk");
+        }
+        *self.unlocked.lock().unwrap() = true;
+        Ok((fixture(), vec!["Windows on this disk wasn't fully shut down.".into()]))
+    }
+    fn prepare_rescue(&self) -> Vec<String> {
+        *self.prepared.lock().unwrap() = true;
+        Vec::new()
+    }
+    fn drives(&self) -> Vec<Drive> {
+        Vec::new()
+    }
+    fn target_fs(&self, _: &Path) -> Option<String> {
+        None
+    }
+    fn keep_awake(&self, _: bool) -> Box<dyn Any> {
+        Box::new(())
+    }
+    fn packs(&self) -> Vec<CompiledPack> {
+        Vec::new()
+    }
+    fn restore_target(
+        &self,
+        _: bool,
+        _: &str,
+    ) -> anyhow::Result<(Target, Box<dyn RestoreHost + Send>)> {
+        anyhow::bail!("no restore here")
+    }
+}
+
+fn screen(keys: &[KeyEvent]) -> (String, Fake) {
+    let p = Fake::default();
+    let mut ui = ScriptUi::new(keys);
+    run_app(&p, &mut ui, first_screen);
+    (ui.screen(), p)
+}
+
+#[test]
+fn locked_disk_is_listed_and_unlocks_with_the_key() {
+    let (s, p) = screen(&[]);
+    assert!(*p.prepared.lock().unwrap(), "disks mounted before the scan");
+    assert!(s.contains("Unlock /dev/sda3"), "{s}");
+    assert!(s.contains("locked with BitLocker"), "{s}");
+    assert!(!s.contains("Windows on"), "{s}");
+
+    // A short key: plain error, digit count, the field keeps what was typed.
+    let mut keys = vec![k(KeyCode::Enter)];
+    keys.extend(text("12345"));
+    keys.push(k(KeyCode::Enter));
+    let (s, _) = screen(&keys);
+    assert!(s.contains("48 digits"), "{s}");
+    assert!(s.contains("5 of 48 digits"), "{s}");
+    assert!(!s.contains("12345"), "key shown on screen: {s}");
+
+    // The right key: unlocked, the install is listed and selected, the note
+    // shown; Enter opens it (the accounts screen).
+    let mut keys = vec![k(KeyCode::Enter)];
+    keys.extend(text(KEY));
+    keys.push(k(KeyCode::Enter));
+    let (s, p) = screen(&keys);
+    assert!(*p.unlocked.lock().unwrap());
+    assert!(s.contains("Windows on"), "{s}");
+    assert!(s.contains("wasn't fully shut down"), "{s}");
+    assert!(!s.contains("Unlock /dev/sda3"), "{s}");
+    assert!(!s.contains("123453"), "{s}");
+    keys.push(k(KeyCode::Enter));
+    let (s, _) = screen(&keys);
+    assert!(s.contains("Alice"), "{s}");
+}
+
+#[test]
+fn a_wrong_key_says_so_and_esc_goes_back() {
+    let bad = KEY.replace("444444", "555555");
+    let mut keys = vec![k(KeyCode::Enter)];
+    keys.extend(text(&bad));
+    keys.push(k(KeyCode::Enter));
+    let (s, p) = screen(&keys);
+    assert!(!*p.unlocked.lock().unwrap());
+    assert!(s.contains("doesn't unlock this disk"), "{s}");
+    keys.push(k(KeyCode::Esc));
+    let (s, _) = screen(&keys);
+    assert!(s.contains("Unlock /dev/sda3"), "{s}");
+}

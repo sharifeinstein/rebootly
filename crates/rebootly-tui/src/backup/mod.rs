@@ -3,6 +3,7 @@
 
 pub mod custom;
 pub mod done;
+mod key;
 pub mod mode;
 pub mod preflight;
 pub mod progress;

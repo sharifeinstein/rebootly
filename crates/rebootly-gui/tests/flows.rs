@@ -12,6 +12,7 @@ use rebootly_core::Source;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, SimHost, Target};
+use rebootly_core::volume::{RecoveryKey, Volume, VolumeState};
 use rebootly_gui::RebootlyApp;
 use rebootly_host::{Drive, Platform};
 
@@ -22,7 +23,12 @@ fn fixture() -> PathBuf {
 struct Fake {
     drive: PathBuf,
     sim: PathBuf,
+    /// A BitLocker-locked disk holding the fixture, until unlocked.
+    locked_disk: bool,
+    unlocked: std::sync::Mutex<bool>,
 }
+
+const KEY: &str = "000000-000011-123453-720885-111111-222222-333333-444444";
 
 impl Platform for Fake {
     fn environment(&self) -> Environment {
@@ -35,7 +41,36 @@ impl Platform for Fake {
         self.open_offline(&fixture())
     }
     fn install_roots(&self) -> Vec<PathBuf> {
-        Vec::new()
+        if *self.unlocked.lock().unwrap() {
+            vec![fixture()]
+        } else {
+            Vec::new()
+        }
+    }
+    fn volumes(&self) -> Vec<Volume> {
+        if !self.locked_disk || *self.unlocked.lock().unwrap() {
+            return Vec::new();
+        }
+        vec![Volume {
+            device: "E:".into(),
+            label: None,
+            size: Some(256 << 30),
+            fs: Some("BitLocker".into()),
+            state: VolumeState::Locked,
+            id: None,
+            removable: true,
+        }]
+    }
+    fn open_volume(
+        &self,
+        _: &str,
+        key: Option<&RecoveryKey>,
+    ) -> anyhow::Result<(PathBuf, Vec<String>)> {
+        if key.map(RecoveryKey::expose) != Some(KEY) {
+            anyhow::bail!("E: wasn't unlocked; check the recovery key");
+        }
+        *self.unlocked.lock().unwrap() = true;
+        Ok((fixture(), vec!["It was hibernated.".into()]))
     }
     fn drives(&self) -> Vec<Drive> {
         vec![Drive {
@@ -69,12 +104,18 @@ struct Gui {
 
 impl Gui {
     fn new(t: &Path) -> Self {
+        Self::with(t, false)
+    }
+
+    fn with(t: &Path, locked_disk: bool) -> Self {
         let drive = t.join("usb");
         let sim = t.join("sim");
         std::fs::create_dir_all(&drive).unwrap();
         let p: Arc<dyn Platform> = Arc::new(Fake {
             drive: drive.clone(),
             sim: sim.clone(),
+            locked_disk,
+            unlocked: Default::default(),
         });
         let h = Harness::builder()
             .with_size([960.0, 2400.0])
@@ -87,7 +128,7 @@ impl Gui {
     fn wait(&mut self, text: &str) {
         for _ in 0..1500 {
             self.h.step();
-            if self.h.query_by_label_contains(text).is_some() {
+            if self.h.query_all_by_label_contains(text).next().is_some() {
                 return;
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -223,4 +264,34 @@ fn saved_profile_then_restore_dry_run_and_real() {
     g.click("Restore now");
     g.wait("Restore done");
     assert!(g.sim.join("C/Users/Alice/Documents").is_dir());
+}
+
+#[test]
+fn locked_disk_unlocks_with_the_recovery_key() {
+    let t = tempfile::tempdir().unwrap();
+    let mut g = Gui::with(t.path(), true);
+    g.click("Back up");
+    g.click("Unlock E: · 256.0 GiB · locked with BitLocker · removable");
+    g.wait("0 of 48 digits");
+    let field = || eframe::egui::Role::PasswordInput;
+    g.h.get_by_role_and_label(field(), "Recovery key").click();
+    g.h.step();
+    g.h.get_by_role_and_label(field(), "Recovery key")
+        .type_text(&KEY[..KEY.len() - 1]);
+    g.h.step();
+    g.click("Unlock");
+    g.wait("this has 47");
+    g.h.get_by_role_and_label(field(), "Recovery key").click();
+    g.h.step();
+    g.h.key_press(eframe::egui::Key::End);
+    g.h.step();
+    g.h.get_by_role_and_label(field(), "Recovery key").type_text("4");
+    g.h.step();
+    g.wait("48 of 48 digits");
+    g.click("Unlock");
+    g.wait("It was hibernated.");
+    g.wait("Windows on");
+    assert!(g.h.query_all_by_label_contains("Unlock E:").next().is_none());
+    g.click("Next"); // the unlocked install is picked
+    g.wait("Alice");
 }

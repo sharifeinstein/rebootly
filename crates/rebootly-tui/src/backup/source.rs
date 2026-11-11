@@ -1,7 +1,7 @@
 //! Pick what to back up: the running Windows, or a Windows installation on
 //! another disk (the Rescue flow's "find Windows" step).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ratatui::Frame;
@@ -11,6 +11,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
+use rebootly_core::volume::RecoveryKey;
 
 use super::{BackupCtx, preflight::PreflightScreen, users::UsersScreen};
 use crate::app::{Ctx, Nav, Screen};
@@ -20,23 +21,53 @@ use crate::widgets::{Menu, TextField};
 enum Choice {
     Live,
     Install(PathBuf),
+    /// A BitLocker-locked volume (device), unlocked with a recovery key.
+    Locked(String),
     Type,
 }
+
+use super::key::{KeyEntry, draw_key};
 
 pub struct SourceScreen {
     rescue: bool,
     choices: Vec<Choice>,
     menu: Menu,
     typing: Option<TextField>,
+    key: Option<KeyEntry>,
     error: Option<String>,
+    /// Notes from mounting/unlocking (hibernated, not shut down cleanly).
+    notes: Vec<String>,
     /// Run this saved job once the source is open.
     job: Option<(JobProfile, PathBuf)>,
 }
 
 impl SourceScreen {
     pub fn new(cx: &mut Ctx, live_ok: bool, job: Option<(JobProfile, PathBuf)>) -> Self {
-        cx.busy("Find Windows", "Looking for Windows installations…");
         let rescue = !live_ok;
+        let notes = if rescue {
+            cx.busy("Find Windows", "Opening the disks (read-only)…");
+            cx.platform.prepare_rescue()
+        } else {
+            Vec::new()
+        };
+        let mut s = SourceScreen {
+            rescue,
+            choices: Vec::new(),
+            menu: Menu::new(Vec::new()),
+            typing: None,
+            key: None,
+            error: None,
+            notes,
+            job,
+        };
+        s.scan(cx, None);
+        s
+    }
+
+    /// List installations and locked volumes; select `prefer` if listed.
+    fn scan(&mut self, cx: &mut Ctx, prefer: Option<&Path>) {
+        cx.busy("Find Windows", "Looking for Windows installations…");
+        let live_ok = !self.rescue;
         let mut choices = Vec::new();
         let mut items = Vec::new();
         if live_ok {
@@ -54,15 +85,50 @@ impl SourceScreen {
             ));
             choices.push(Choice::Install(i.volume_root));
         }
+        for v in cx.platform.volumes().into_iter().filter(|v| v.is_locked()) {
+            items.push((
+                format!("Unlock {}", v.describe()),
+                "BitLocker: needs the recovery key".into(),
+            ));
+            choices.push(Choice::Locked(v.device));
+        }
         choices.push(Choice::Type);
         items.push(("Type a path…".into(), "a mounted Windows volume".into()));
-        SourceScreen {
-            rescue,
-            choices,
-            menu: Menu::new(items),
-            typing: None,
-            error: None,
-            job,
+        let pick = prefer.and_then(|p| {
+            choices
+                .iter()
+                .position(|c| matches!(c, Choice::Install(r) if r == p))
+        });
+        self.choices = choices;
+        self.menu = Menu::new(items);
+        if let Some(i) = pick {
+            self.menu.cursor = i;
+        }
+    }
+
+    fn unlock(&mut self, cx: &mut Ctx) {
+        let Some(entry) = self.key.take() else {
+            return;
+        };
+        let key = match RecoveryKey::parse(&entry.field.value) {
+            Ok(k) => k,
+            Err(e) => {
+                self.error = Some(e.to_string());
+                self.key = Some(entry); // keep what was typed, to fix it
+                return;
+            }
+        };
+        cx.busy("Unlock", "Unlocking the disk (this can take a minute)…");
+        match cx.platform.open_volume(&entry.device, Some(&key)) {
+            Ok((root, notes)) => {
+                self.notes.extend(notes);
+                self.notes.dedup();
+                self.scan(cx, Some(&root));
+            }
+            Err(e) => {
+                self.error = Some(format!("{e:#}"));
+                self.key = Some(entry); // try again, or Esc
+            }
         }
     }
 
@@ -78,6 +144,13 @@ impl SourceScreen {
                     "Reading the accounts and folders on that disk…",
                 );
                 (cx.platform.open_offline(p), p.display().to_string())
+            }
+            Choice::Locked(dev) => {
+                self.key = Some(KeyEntry {
+                    device: dev.clone(),
+                    field: TextField::new("", true),
+                });
+                return Nav::Stay;
             }
             Choice::Type => {
                 self.typing = Some(TextField::new("", false));
@@ -125,7 +198,9 @@ impl Screen for SourceScreen {
     }
 
     fn hints(&self) -> String {
-        if self.typing.is_some() {
+        if self.key.is_some() {
+            "type the 48-digit recovery key · Enter unlock · Esc cancel".into()
+        } else if self.typing.is_some() {
             "type the folder that contains Windows\\ · Enter open · Esc cancel".into()
         } else if self.rescue {
             "↑↓ move · Enter choose · q quit".into()
@@ -148,22 +223,39 @@ impl Screen for SourceScreen {
             "Pick the Windows to back up. Usually that's this PC."
         };
         f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), intro);
-        match &self.typing {
-            Some(t) => t.draw(f, body, true),
-            None => self.menu.draw(f, body),
+        match (&self.key, &self.typing) {
+            (Some(k), _) => draw_key(f, body, k),
+            (None, Some(t)) => t.draw(f, body, true),
+            (None, None) => self.menu.draw(f, body),
         }
-        let note = match &self.error {
-            Some(e) => Line::styled(e.clone(), ratatui::style::Style::default().fg(BAD)),
-            None if self.rescue => Line::styled(
-                "Disks locked with BitLocker aren't listed yet (unlocking comes in a later version).",
-                dim(),
-            ),
-            None => Line::default(),
-        };
-        f.render_widget(Paragraph::new(note).wrap(Wrap { trim: true }), foot);
+        let mut lines: Vec<Line> = Vec::new();
+        if let Some(e) = &self.error {
+            lines.push(Line::styled(
+                e.clone(),
+                ratatui::style::Style::default().fg(BAD),
+            ));
+        }
+        lines.extend(self.notes.iter().map(|n| Line::styled(n.clone(), dim())));
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), foot);
     }
 
     fn key(&mut self, k: KeyEvent, cx: &mut Ctx) -> Nav {
+        if let Some(entry) = &mut self.key {
+            match k.code {
+                KeyCode::Esc => {
+                    self.key = None;
+                    self.error = None;
+                }
+                KeyCode::Enter => {
+                    self.error = None;
+                    self.unlock(cx);
+                }
+                _ => {
+                    entry.field.key(&k);
+                }
+            }
+            return Nav::Stay;
+        }
         if let Some(t) = &mut self.typing {
             match k.code {
                 KeyCode::Esc => self.typing = None,
@@ -190,3 +282,4 @@ impl Screen for SourceScreen {
         }
     }
 }
+

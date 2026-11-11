@@ -3613,6 +3613,7 @@ dependencies = [
  "clap",
  "rebootly-core",
  "rebootly-host",
+ "rebootly-linux",
  "rebootly-tui",
  "rebootly-win",
  "rpassword",
@@ -3659,6 +3660,7 @@ dependencies = [
  "anyhow",
  "fs4",
  "rebootly-core",
+ "rebootly-linux",
  "rebootly-win",
 ]
 
@@ -3666,7 +3668,11 @@ dependencies = [
 name = "rebootly-linux"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "rebootly-core",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

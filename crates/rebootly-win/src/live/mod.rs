@@ -17,6 +17,7 @@ mod restore;
 mod streams;
 mod token;
 mod volume;
+pub mod volumes;
 mod vss;
 mod wide;
 

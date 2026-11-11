@@ -23,6 +23,10 @@ pub struct InspectReport {
     pub profile_dirs: ProfileDirs,
     pub users: Vec<UserReport>,
     pub skipped: Vec<SkippedProfile>,
+    /// Other drive letters of the install that are mounted here (offline).
+    pub other_drives: Vec<(char, std::path::PathBuf)>,
+    /// e.g. the install was hibernated.
+    pub notes: Vec<String>,
 }
 
 pub fn inspect(src: &dyn Source) -> Result<InspectReport, SourceError> {
@@ -39,5 +43,7 @@ pub fn inspect(src: &dyn Source) -> Result<InspectReport, SourceError> {
         profile_dirs: src.profile_dirs().clone(),
         users,
         skipped: src.skipped_profiles().to_vec(),
+        other_drives: src.other_drives(),
+        notes: src.source_notes(),
     })
 }

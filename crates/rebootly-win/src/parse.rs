@@ -176,6 +176,12 @@ pub fn quotable(s: &str) -> bool {
     !s.is_empty() && !s.contains(['"', '\0', '\r', '\n'])
 }
 
+/// A BitLocker volume's boot sector carries the OEM ID `-FVE-FS-` (bytes
+/// 3..11) where NTFS has `NTFS    `.
+pub fn is_bitlocker_boot_sector(sector: &[u8]) -> bool {
+    sector.get(3..11) == Some(b"-FVE-FS-")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +279,15 @@ mod tests {
         assert!(is_thumbprint("0123456789ABCDEF0123456789abcdef01234567"));
         assert!(!is_thumbprint("../../x"));
         assert!(quotable("Home Wi-Fi") && !quotable("a\"b"));
+    }
+
+    #[test]
+    fn bitlocker_boot_sector() {
+        let mut s = [0u8; 512];
+        s[3..11].copy_from_slice(b"-FVE-FS-");
+        assert!(super::is_bitlocker_boot_sector(&s));
+        s[3..11].copy_from_slice(b"NTFS    ");
+        assert!(!super::is_bitlocker_boot_sector(&s));
+        assert!(!super::is_bitlocker_boot_sector(b"abc"));
     }
 }

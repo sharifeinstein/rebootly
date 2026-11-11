@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use rebootly_core::{OfflineVolume, Source};
+use rebootly_core::Source;
 
 /// Open the running system. Needs an elevated prompt.
 pub fn live() -> anyhow::Result<Box<dyn Source>> {
@@ -21,7 +21,7 @@ pub fn live() -> anyhow::Result<Box<dyn Source>> {
 pub fn open(live_mode: bool, root: Option<&PathBuf>) -> anyhow::Result<Box<dyn Source>> {
     match (live_mode, root) {
         (true, _) => live(),
-        (false, Some(r)) => Ok(Box::new(OfflineVolume::open(r)?)),
+        (false, Some(r)) => crate::volumes::open_offline(r),
         (false, None) => anyhow::bail!("give --windows-root <PATH> or --live"),
     }
 }

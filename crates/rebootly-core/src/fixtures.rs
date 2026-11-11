@@ -10,10 +10,14 @@ use std::io;
 use std::path::Path;
 
 use crate::folders::{SHELL_FOLDERS, USER_SHELL_FOLDERS};
+use crate::hive::ValueType;
 use crate::hive::writer::HiveWriter;
 use crate::profiles::PROFILE_LIST;
 
 pub const DOM: &str = "S-1-5-21-1111111111-2222222222-3333333333";
+/// GPT partitions of the fixture's C: and D: (SYSTEM\MountedDevices).
+pub const C_PARTITION: &str = "11111111-2222-3333-4444-555555555555";
+pub const D_PARTITION: &str = "66666666-7777-8888-9999-aaaaaaaaaaaa";
 pub const CAROL_SID: &str = "S-1-12-1-1234567890-1234567890-1234567890-1234567890";
 
 fn put(root: &Path, rel: &str, bytes: &[u8]) -> io::Result<()> {
@@ -82,6 +86,10 @@ fn system() -> HiveWriter {
     w.key(r"ControlSet001\Control\Session Manager\Environment")
         .expand_sz("TEMP", r"%SystemRoot%\TEMP")
         .sz("OS", "Windows_NT");
+    let gpt = |g| crate::volume::mounted::gpt_value(g).expect("valid GUID");
+    w.key("MountedDevices")
+        .set(r"\DosDevices\C:", ValueType::Binary, gpt(C_PARTITION))
+        .set(r"\DosDevices\D:", ValueType::Binary, gpt(D_PARTITION));
     w
 }
 

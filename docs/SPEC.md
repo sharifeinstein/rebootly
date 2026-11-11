@@ -69,6 +69,7 @@ Implementation (M4): `OfflineVolume` reads through a `VolumeAccess` strategy (ho
 
 ### 3.3 Locating the Windows install (offline)
 Scan every mounted volume for `\Windows\System32\config\SOFTWARE`. **Never assume C:** (WinPE assigns other letters). If more than one install is found, let the user choose.
+Implementation (M7): volumes are listed by the platform layer (`rebootly-core::volume::Volume`: device, label, size, filesystem, mounted/locked/unmounted, partition identity). Linux: `lsblk -J -l`, gaps filled with `blkid -p` (no udev on minimal rescue systems); WinPE/Windows: drive letters, a locked BitLocker volume recognised by its `-FVE-FS-` boot sector. The offline Windows' **other drive letters** (D:, …) come from its `SYSTEM\MountedDevices` (MBR signature + offset, or GPT partition GUID) and are matched to mounted volumes by that identity (Linux: PARTUUID/PTUUID + partition start; WinPE: its own `MountedDevices`), never by the letter WinPE assigned. A backup target on one of those drives gets a warning.
 
 ### 3.4 Profile and folder resolution
 - Profiles come from `SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList`: SID → `ProfileImagePath`. Skip system SIDs (S-1-5-18/19/20). Label local, Microsoft and Entra ID/domain accounts.
@@ -189,11 +190,12 @@ post_restore:
 
 ### 7.1 BitLocker unlock (inside the tool)
 Detect a BitLocker volume and prompt for the 48-digit recovery key (input masked, never logged).
-- WinPE: `manage-bde -unlock <X:> -RecoveryPassword <key>` (the image needs `WinPE-SecureStartup`).
-- Linux: `cryptsetup bitlkOpen` (≥2.3); fallback `dislocker`.
+- WinPE: `manage-bde -unlock <X:> -RecoveryPassword <key>` (the image needs `WinPE-SecureStartup`). Also offered from Windows for another disk (GUI and text screens).
+- Linux: `cryptsetup open --type bitlk --readonly` (≥2.3), key on stdin; fallback `dislocker -r` (key in its arguments: dislocker has no other non-interactive input).
+- The key is checked first (48 digits, each group a multiple of 11 below 720 896), held as a secret, and scrubbed from any tool output shown. The screens show a dot per character and "N of 48 digits".
 
 ### 7.2 Mounting (Linux)
-**Read-only always:** `mount -t ntfs3 -o ro`, falling back to `ntfs-3g -o ro`. Fast Startup/hibernated and dirty volumes are mounted read-only and the user is told why.
+**Read-only always:** `mount -t ntfs3 -o ro`, falling back to `ntfs-3g -o ro`. Fast Startup/hibernated and dirty volumes are mounted read-only and the user is told why. Mounts go under `/run/rebootly/<device>` and are undone at exit (`rebootly-cli open` leaves them for later commands; `rebootly-cli close` undoes them). Hibernation (Fast Startup) is detected from the `HIBR` header of `hiberfil.sys` on every offline volume (also WinPE) and shown in pre-flight and the report.
 
 ### 7.3 WinPE limits
 - The X: RAM disk has tiny scratch space: write nothing there except state to the target.

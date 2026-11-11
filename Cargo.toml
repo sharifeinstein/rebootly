@@ -12,6 +12,7 @@ repository = "https://github.com/sharifeinstein/rebootly"
 [workspace.dependencies]
 rebootly-core = { path = "crates/rebootly-core" }
 rebootly-win = { path = "crates/rebootly-win" }
+rebootly-linux = { path = "crates/rebootly-linux" }
 rebootly-tui = { path = "crates/rebootly-tui" }
 rebootly-host = { path = "crates/rebootly-host" }
 thiserror = "2"

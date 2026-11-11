@@ -20,6 +20,9 @@ serde_json.workspace = true
 rpassword = "7"
 rebootly-tui.workspace = true
 
+[target.'cfg(not(windows))'.dependencies]
+rebootly-linux.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 

@@ -9,6 +9,7 @@ use rebootly_core::backup::preflight::gib;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, SimHost, Target};
+use rebootly_core::volume::{RecoveryKey, Volume};
 
 use crate::{Drive, Platform};
 
@@ -29,11 +30,16 @@ pub struct MachineOptions {
 /// The machine Rebootly runs on.
 pub struct Machine {
     pub args: MachineOptions,
+    /// Unlocks and read-only mounts made in this run (undone on drop).
+    pub vols: crate::volumes::Volumes,
 }
 
 impl Machine {
     pub fn new(args: MachineOptions) -> Self {
-        Machine { args }
+        Machine {
+            args,
+            vols: crate::volumes::Volumes::new(),
+        }
     }
 }
 
@@ -110,7 +116,35 @@ impl Platform for Machine {
     }
 
     fn install_roots(&self) -> Vec<PathBuf> {
-        mounted()
+        let mut roots = mounted();
+        for v in self.volumes() {
+            if let Some(r) = v.root() {
+                if !roots.iter().any(|x| x == r) {
+                    roots.push(r.to_path_buf());
+                }
+            }
+        }
+        roots
+    }
+
+    fn open_offline(&self, root: &Path) -> anyhow::Result<Box<dyn Source>> {
+        crate::volumes::open_offline(root)
+    }
+
+    fn volumes(&self) -> Vec<Volume> {
+        crate::volumes::list()
+    }
+
+    fn open_volume(
+        &self,
+        device: &str,
+        key: Option<&RecoveryKey>,
+    ) -> anyhow::Result<(PathBuf, Vec<String>)> {
+        self.vols.open(device, key)
+    }
+
+    fn prepare_rescue(&self) -> Vec<String> {
+        self.vols.mount_all()
     }
 
     fn drives(&self) -> Vec<Drive> {

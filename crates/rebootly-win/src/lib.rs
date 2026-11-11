@@ -8,6 +8,7 @@
 //! `SHGetKnownFolderPath` cross-check, Tier 4 command captures, sleep
 //! prevention, battery check, target filesystem type.
 //! M5: the restore target (current user's known folders) and `RestoreHost`.
+//! M7: drive letters as volumes, BitLocker lock state, `manage-bde` unlock.
 
 #[cfg(windows)]
 mod live;
@@ -19,3 +20,5 @@ pub use live::{
     LiveError, LiveWindows, SleepGuard, WinRestoreHost, filesystem_type, is_elevated, live_target,
     on_battery,
 };
+#[cfg(windows)]
+pub use live::volumes::{letter_identity, unlock as unlock_bitlocker, volumes};

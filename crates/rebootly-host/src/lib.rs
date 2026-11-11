@@ -6,6 +6,7 @@ pub mod custom;
 pub mod machine;
 pub mod session;
 pub mod source;
+pub mod volumes;
 
 pub use machine::{Machine, MachineOptions};
 
@@ -21,6 +22,7 @@ use rebootly_core::Source;
 use rebootly_core::env::Environment;
 use rebootly_core::packs::schema::CompiledPack;
 use rebootly_core::restore::{RestoreHost, Target};
+use rebootly_core::volume::{RecoveryKey, Volume};
 
 /// A drive or folder offered as a backup target (or searched for backups).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,27 @@ pub trait Platform: Send + Sync {
     }
     /// Directories to scan for Windows installations (Rescue flow).
     fn install_roots(&self) -> Vec<PathBuf>;
+    /// Partitions and drive letters Windows could be on (SPEC §3.3, §7):
+    /// readable ones, and BitLocker-locked ones to unlock. Default: none.
+    fn volumes(&self) -> Vec<Volume> {
+        Vec::new()
+    }
+    /// Make `device` readable: unlock it with `key` (BitLocker) and mount
+    /// it read-only (Linux). Returns where it can be read and notes for the
+    /// user (e.g. it was hibernated).
+    fn open_volume(
+        &self,
+        device: &str,
+        key: Option<&RecoveryKey>,
+    ) -> anyhow::Result<(PathBuf, Vec<String>)> {
+        let _ = key;
+        anyhow::bail!("{device} can't be opened here")
+    }
+    /// Before the Rescue flow lists installations: mount every unmounted
+    /// Windows filesystem read-only (Linux). Returns notes. Default: none.
+    fn prepare_rescue(&self) -> Vec<String> {
+        Vec::new()
+    }
     /// Drives offered as backup targets and searched for backups. Never
     /// the running system's own drive.
     fn drives(&self) -> Vec<Drive>;

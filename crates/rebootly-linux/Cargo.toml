@@ -1,6 +1,6 @@
 [package]
 name = "rebootly-linux"
-description = "Linux recovery backend: volume discovery, BitLocker unlock, read-only mount (M7)"
+description = "Linux recovery backend: volume discovery, BitLocker unlock, read-only mount"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,12 @@ license.workspace = true
 
 [dependencies]
 rebootly-core.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

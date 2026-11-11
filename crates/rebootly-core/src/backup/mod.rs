@@ -50,6 +50,17 @@ pub fn preflight(
         target_fs,
         &plan.source_root,
     );
+    p.warnings.extend(plan.source_notes.iter().cloned());
+    if let Ok(t) = job_target.canonicalize() {
+        for (letter, root) in &plan.other_drives {
+            if root.canonicalize().is_ok_and(|r| t.starts_with(r)) {
+                p.warnings.push(format!(
+                    "the target is on {letter}:, a drive of the Windows being backed up; \
+                     fine if that disk is healthy, but use another disk to rescue a failing one"
+                ));
+            }
+        }
+    }
     let (n, b) = plan.to_download;
     if n > 0 {
         p.warnings.push(format!(

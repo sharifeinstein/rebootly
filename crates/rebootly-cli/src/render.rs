@@ -57,6 +57,12 @@ pub fn text(r: &InspectReport, root: &Path) -> String {
         root.display(),
         r.environment.as_str()
     );
+    for (letter, at) in &r.other_drives {
+        let _ = writeln!(s, "Drive {letter}: of that Windows is mounted at {}", at.display());
+    }
+    for n in &r.notes {
+        let _ = writeln!(s, "Note: {n}");
+    }
     for u in &r.users {
         user(&mut s, u, root);
     }
