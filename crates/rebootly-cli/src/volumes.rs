@@ -40,6 +40,20 @@ pub struct OpenArgs {
     password_file: Option<PathBuf>,
 }
 
+#[derive(Args)]
+pub struct TargetArgs {
+    /// Device from `rebootly-cli volumes` to mount for writing (`/dev/sdb1`).
+    #[arg(required_unless_present = "stick")]
+    device: Option<String>,
+    /// Find the Rebootly stick (the partition with `.rebootly-root`) and
+    /// mount it for writing.
+    #[arg(long, conflicts_with = "device")]
+    stick: bool,
+    /// Print only the folder (for scripts); nothing when there's no stick.
+    #[arg(long)]
+    quiet: bool,
+}
+
 fn row(v: &Volume) -> String {
     let state = match &v.state {
         VolumeState::Mounted { root, read_only } => {
@@ -140,11 +154,39 @@ pub fn open(args: OpenArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
-/// Unmount and lock again what `open` left (Linux).
+/// Mount a drive read-write as a backup target (Linux rescue systems).
+pub fn target(args: TargetArgs) -> anyhow::Result<u8> {
+    let root = if args.stick {
+        match rebootly_host::volumes::mount_stick()? {
+            Some(r) => r,
+            None if args.quiet => return Ok(1),
+            None => anyhow::bail!("no Rebootly stick found (a drive with .rebootly-root)"),
+        }
+    } else {
+        let mut vols = rebootly_host::volumes::Volumes::new();
+        vols.keep();
+        vols.mount_target(args.device.as_deref().unwrap_or_default())?
+    };
+    if args.quiet {
+        println!("{}", root.display());
+    } else {
+        println!(
+            "Mounted for writing at {}. Back up into it, then `rebootly-cli close` \
+             (flushes and unmounts) before unplugging.",
+            root.display()
+        );
+    }
+    Ok(0)
+}
+
+/// Unmount and lock again what `open` left, and flush and unmount the
+/// targets (Linux).
 pub fn close() -> anyhow::Result<u8> {
     #[cfg(not(windows))]
     {
-        let errs = rebootly_linux::mount::close_all(&rebootly_linux::cmd::System);
+        let run = rebootly_linux::cmd::System;
+        let mut errs = rebootly_linux::TargetMounter::system(&run).close_all();
+        errs.extend(rebootly_linux::mount::close_all(&run));
         for e in &errs {
             eprintln!("{e}");
         }

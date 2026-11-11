@@ -27,6 +27,8 @@ fn fixture() -> PathBuf {
 struct Fake {
     unlocked: Mutex<bool>,
     prepared: Mutex<bool>,
+    /// Where the USB disk was mounted for writing.
+    target: Mutex<Option<PathBuf>>,
 }
 
 impl Platform for Fake {
@@ -83,6 +85,27 @@ impl Platform for Fake {
     }
     fn drives(&self) -> Vec<Drive> {
         Vec::new()
+    }
+    fn target_volumes(&self) -> Vec<Volume> {
+        let usb = |dev: &str, label: &str| Volume {
+            device: dev.into(),
+            label: Some(label.into()),
+            size: Some(1 << 40),
+            fs: Some("ntfs".into()),
+            state: VolumeState::Unmounted,
+            id: None,
+            removable: true,
+        };
+        vec![usb("/dev/sdb1", "OldPC"), usb("/dev/sdc1", "Backup HDD")]
+    }
+    fn mount_target(&self, device: &str) -> anyhow::Result<PathBuf> {
+        if device == "/dev/sdb1" {
+            anyhow::bail!("{device} has Windows on it");
+        }
+        let dir = std::env::temp_dir().join(format!("rebootly-tui-target-{}", std::process::id()));
+        std::fs::create_dir_all(&dir)?;
+        *self.target.lock().unwrap() = Some(dir.clone());
+        Ok(dir)
     }
     fn target_fs(&self, _: &Path) -> Option<String> {
         None
@@ -177,4 +200,29 @@ fn a_wrong_key_says_so_and_esc_goes_back() {
     keys.push(k(KeyCode::Esc));
     let (s, _) = screen(&keys);
     assert!(s.contains("Unlock /dev/sda3"), "{s}");
+}
+
+#[test]
+fn a_usb_disk_is_mounted_for_writing_from_the_target_screen() {
+    let mut keys = vec![k(KeyCode::Enter)];
+    keys.extend(text(KEY));
+    keys.extend([k(KeyCode::Enter), k(KeyCode::Enter), k(KeyCode::Enter), k(KeyCode::Enter)]);
+    let (s, _) = screen(&keys);
+    assert!(s.contains("Where should the backup go"), "{s}");
+    assert!(s.contains("Use /dev/sdc1 · “Backup HDD”"), "{s}");
+    assert!(s.contains("mounts it for writing"), "{s}");
+
+    // The disk with Windows: refused, the screen stays.
+    keys.push(k(KeyCode::Enter));
+    let (s, p) = screen(&keys);
+    assert!(s.contains("has Windows on it"), "{s}");
+    assert!(p.target.lock().unwrap().is_none());
+
+    // The backup disk: mounted, on to the pre-flight.
+    keys.extend([k(KeyCode::Down), k(KeyCode::Enter)]);
+    let (s, p) = screen(&keys);
+    let dir = p.target.lock().unwrap().clone().expect("mounted");
+    assert!(!s.contains("Where should the backup go"), "{s}");
+    assert!(s.contains("Target: ") && s.contains("rebootly-tui-target"), "pre-flight on the mounted disk: {s}");
+    let _ = std::fs::remove_dir_all(dir);
 }

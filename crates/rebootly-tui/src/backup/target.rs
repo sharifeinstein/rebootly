@@ -1,17 +1,21 @@
-//! Where to put the backup: a listed drive (into its `Rebootly\` folder) or
-//! a typed folder (NAS share, another directory).
+//! Where to put the backup: a listed drive (into its `Rebootly\` folder), a
+//! drive to mount for writing first (Linux rescue systems: a USB disk), or a
+//! typed folder (NAS share, another directory).
 
 use std::path::PathBuf;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 use rebootly_core::backup::profile::Selection;
+use rebootly_core::volume::Volume;
 
 use super::Shared;
 use super::preflight::PreflightScreen;
 use crate::app::{Ctx, Nav, Screen};
+use crate::ui::BAD;
 use crate::widgets::{Menu, TextField};
 use rebootly_host::Drive;
 
@@ -22,24 +26,36 @@ pub struct TargetScreen {
     ctx: Shared,
     sel: Selection,
     drives: Vec<Drive>,
+    /// Drives that need mounting for writing first (listed after `drives`).
+    mountable: Vec<Volume>,
     menu: Menu,
     typing: Option<TextField>,
+    error: Option<String>,
 }
 
 impl TargetScreen {
     pub fn new(cx: &mut Ctx, ctx: Shared, sel: Selection) -> Self {
         let drives = cx.platform.drives();
+        let mountable = cx.platform.target_volumes();
         let mut items: Vec<(String, String)> = drives
             .iter()
             .map(|d| (d.path.display().to_string(), d.note.clone()))
             .collect();
+        items.extend(mountable.iter().map(|v| {
+            (
+                format!("Use {}", v.describe()),
+                "mounts it for writing".into(),
+            )
+        }));
         items.push(("Type a folder…".into(), "a NAS share or any folder".into()));
         TargetScreen {
             ctx,
             sel,
             drives,
+            mountable,
             menu: Menu::new(items),
             typing: None,
+            error: None,
         }
     }
 
@@ -67,8 +83,12 @@ impl Screen for TargetScreen {
     }
 
     fn draw(&mut self, f: &mut Frame, area: Rect) {
-        let [intro, body] =
-            Layout::vertical([Constraint::Length(3), Constraint::Min(3)]).areas(area);
+        let [intro, body, foot] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(if self.error.is_some() { 3 } else { 0 }),
+        ])
+        .areas(area);
         f.render_widget(
             Paragraph::new(format!(
                 "Where should the backup go? On a drive it goes into a {DRIVE_FOLDER} folder; \
@@ -80,6 +100,13 @@ impl Screen for TargetScreen {
         match &self.typing {
             Some(t) => t.draw(f, body, true),
             None => self.menu.draw(f, body),
+        }
+        if let Some(e) = &self.error {
+            f.render_widget(
+                Paragraph::new(Line::styled(e.clone(), ratatui::style::Style::default().fg(BAD)))
+                    .wrap(Wrap { trim: true }),
+                foot,
+            );
         }
     }
 
@@ -98,10 +125,25 @@ impl Screen for TargetScreen {
             }
             return Nav::Stay;
         }
-        match self.menu.key(&k) {
-            Some(i) if i < self.drives.len() => {
+        let pick = self.menu.key(&k);
+        if pick.is_some() {
+            self.error = None;
+        }
+        let n = self.drives.len();
+        match pick {
+            Some(i) if i < n => {
                 let p = self.drives[i].path.join(DRIVE_FOLDER);
                 self.next(cx, p)
+            }
+            Some(i) if i < n + self.mountable.len() => {
+                let dev = self.mountable[i - n].device.clone();
+                match cx.platform.mount_target(&dev) {
+                    Ok(root) => self.next(cx, root.join(DRIVE_FOLDER)),
+                    Err(e) => {
+                        self.error = Some(format!("{e:#}"));
+                        Nav::Stay
+                    }
+                }
             }
             Some(_) => {
                 self.typing = Some(TextField::new("", false));

@@ -106,6 +106,97 @@ impl Volumes {
     }
 }
 
+impl Volumes {
+    /// Volumes that could be mounted read-write as a backup target (Linux:
+    /// exFAT/NTFS, not BitLocker; Windows: none, letters are mounted).
+    pub fn target_candidates(&self) -> Vec<Volume> {
+        #[cfg(not(windows))]
+        {
+            rebootly_linux::target::candidates(&list())
+                .into_iter()
+                .filter(|v| !unlocked_bitlocker(&v.device))
+                // Mounted already (for the Rescue flow) and holding Windows:
+                // never a target, so not offered.
+                .filter(|v| {
+                    v.root().is_none_or(|r| {
+                        rebootly_core::install::WindowsInstall::from_path(r).is_none()
+                    })
+                })
+                .collect()
+        }
+        #[cfg(windows)]
+        {
+            Vec::new()
+        }
+    }
+
+    /// Mount `device` read-write as a backup target (Linux). A read-only
+    /// mount made by Rebootly is replaced; a disk with Windows is refused.
+    pub fn mount_target(&self, device: &str) -> anyhow::Result<PathBuf> {
+        #[cfg(not(windows))]
+        {
+            use rebootly_core::volume::VolumeState;
+            let mut v = list()
+                .into_iter()
+                .find(|v| v.device.eq_ignore_ascii_case(device))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("{device}: no such volume (see `rebootly-cli volumes`)")
+                })?;
+            if unlocked_bitlocker(&v.device) {
+                anyhow::bail!("{device} is a BitLocker drive; backups go to an unencrypted drive");
+            }
+            if let VolumeState::Mounted { root, read_only: true } = &v.state {
+                if root.starts_with(rebootly_linux::BASE) {
+                    if rebootly_core::install::WindowsInstall::from_path(root).is_some() {
+                        anyhow::bail!(
+                            "{device} has Windows on it; Rebootly never writes to a Windows disk \
+                             from a rescue system"
+                        );
+                    }
+                    self.mounter.unmount(root)?;
+                    v.state = VolumeState::Unmounted;
+                }
+            }
+            let t = rebootly_linux::TargetMounter::system(self.mounter.runner());
+            Ok(t.mount(&v)?)
+        }
+        #[cfg(windows)]
+        {
+            anyhow::bail!("{device}: Windows mounts drives itself; pick its letter")
+        }
+    }
+}
+
+/// Mount the Rebootly stick (the partition with `.rebootly-root`)
+/// read-write; `None` when there is none (Linux only).
+pub fn mount_stick() -> anyhow::Result<Option<PathBuf>> {
+    #[cfg(not(windows))]
+    {
+        let vols = list();
+        let run = rebootly_linux::cmd::System;
+        let t = rebootly_linux::TargetMounter::system(&run);
+        match t.find_stick(&vols) {
+            Some(v) => Ok(Some(t.mount(v)?)),
+            None => Ok(None),
+        }
+    }
+    #[cfg(windows)]
+    {
+        Ok(None)
+    }
+}
+
+/// Was `device` unlocked by Rebootly (cryptsetup or dislocker)?
+#[cfg(not(windows))]
+fn unlocked_bitlocker(device: &str) -> bool {
+    let s = std::path::Path::new(device)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Path::new("/dev/mapper").join(format!("rebootly-{s}")).exists()
+        || Path::new(rebootly_linux::BASE).join(format!("fve-{s}")).exists()
+}
+
 fn with_hibernation(root: PathBuf, mut notes: Vec<String>) -> (PathBuf, Vec<String>) {
     let note = rebootly_core::volume::HIBERNATED_NOTE;
     if rebootly_core::volume::hibernated(&root) && !notes.iter().any(|n| n == note) {

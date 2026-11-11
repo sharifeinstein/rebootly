@@ -147,11 +147,23 @@ impl Platform for Machine {
         self.vols.mount_all()
     }
 
+    fn target_volumes(&self) -> Vec<Volume> {
+        self.vols.target_candidates()
+    }
+
+    fn mount_target(&self, device: &str) -> anyhow::Result<PathBuf> {
+        self.vols.mount_target(device)
+    }
+
     fn drives(&self) -> Vec<Drive> {
         let system = std::env::var("SystemDrive")
             .ok()
             .map(|d| d.to_ascii_uppercase());
-        let live = Environment::detect() == Environment::LiveWindows;
+        // Live Windows: its own drive. WinPE: SystemDrive is the X: RAM disk.
+        let live = matches!(
+            Environment::detect(),
+            Environment::LiveWindows | Environment::WinPe
+        );
         let mut out: Vec<Drive> = mounted()
             .into_iter()
             .filter(|p| {

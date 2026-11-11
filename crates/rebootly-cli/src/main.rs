@@ -73,7 +73,10 @@ enum Cmd {
     /// Unlock a BitLocker volume and/or mount it read-only (Linux), and
     /// leave it open for `inspect` and `backup --windows-root`.
     Open(volumes::OpenArgs),
-    /// Unmount and close what `open` left open (Linux).
+    /// Mount a drive read-write as a backup target, or find and mount the
+    /// Rebootly stick (Linux rescue systems).
+    Target(volumes::TargetArgs),
+    /// Unmount and close what `open` and `target` left open (Linux).
     Close,
 }
 
@@ -123,6 +126,7 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
         Cmd::Sensitive(cmd) => sensitive::run(cmd),
         Cmd::Volumes(args) => volumes::list(args),
         Cmd::Open(args) => volumes::open(args),
+        Cmd::Target(args) => volumes::target(args),
         Cmd::Close => volumes::close(),
     }
 }

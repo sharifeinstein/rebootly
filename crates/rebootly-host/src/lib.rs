@@ -67,6 +67,15 @@ pub trait Platform: Send + Sync {
     fn prepare_rescue(&self) -> Vec<String> {
         Vec::new()
     }
+    /// Volumes that could be mounted for writing as a backup target (Linux
+    /// rescue systems: a USB disk). Default: none.
+    fn target_volumes(&self) -> Vec<Volume> {
+        Vec::new()
+    }
+    /// Mount `device` read-write as a backup target; returns where.
+    fn mount_target(&self, device: &str) -> anyhow::Result<PathBuf> {
+        anyhow::bail!("{device} can't be mounted here")
+    }
     /// Drives offered as backup targets and searched for backups. Never
     /// the running system's own drive.
     fn drives(&self) -> Vec<Drive>;

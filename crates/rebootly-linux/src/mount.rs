@@ -212,6 +212,22 @@ impl Mounter {
         }
     }
 
+    /// Unmount one read-only mount made by this run (to mount the volume
+    /// for writing as a target instead). Its unlock, if any, stays.
+    pub fn unmount(&self, root: &Path) -> Result<(), MountError> {
+        let out = self.run.run("umount", &[&root.to_string_lossy()], None)?;
+        if !out.ok() {
+            return Err(MountError::Failed {
+                step: "unmounting",
+                detail: last_line(&out.stderr),
+            });
+        }
+        let mut done = self.done.lock().expect("mount log");
+        done.retain(|u| !matches!(u, Undo::Umount(d) | Undo::Rmdir(d) if d == root));
+        let _ = std::fs::remove_dir(root);
+        Ok(())
+    }
+
     /// Undo every mount and unlock, newest first. Errors are returned as
     /// text (nothing more can be done about them).
     pub fn release(&self) -> Vec<String> {
