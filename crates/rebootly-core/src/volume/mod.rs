@@ -8,8 +8,8 @@ pub mod mounted;
 
 pub use hiber::{HIBERNATED_NOTE, hibernated};
 pub use key::{
-    KeyError, RecoveryKey, grouped as grouped_key, progress as key_progress,
-    typing_status as key_status,
+    KeyError, RecoveryKey, find_key, grouped as grouped_key, pasted_digits as pasted_key_digits,
+    progress as key_progress, tidy as tidy_key, typing_status as key_status,
 };
 pub use mounted::{MountedVolume, VolumeId, drive_letters, match_letters};
 

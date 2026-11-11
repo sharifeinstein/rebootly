@@ -88,3 +88,16 @@ pub trait Platform: Send + Sync {
         backup_user: &str,
     ) -> anyhow::Result<(Target, Box<dyn RestoreHost + Send>)>;
 }
+
+/// Text on the system clipboard (Windows; elsewhere the terminal pastes by
+/// typing, so there is nothing to read).
+pub fn clipboard_text() -> Option<String> {
+    #[cfg(windows)]
+    {
+        rebootly_win::clipboard_text()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}

@@ -21,4 +21,6 @@ pub use live::{
     on_battery,
 };
 #[cfg(windows)]
+pub use live::clipboard::clipboard_text;
+#[cfg(windows)]
 pub use live::volumes::{letter_identity, unlock as unlock_bitlocker, volumes};

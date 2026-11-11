@@ -74,6 +74,14 @@ impl RebootlyApp {
 }
 
 impl eframe::App for RebootlyApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // eframe's shortcuts are off on Windows (main.rs): paste comes from
+        // the Windows clipboard here.
+        if cfg!(windows) {
+            crate::clipboard::translate(&mut raw.events, rebootly_host::clipboard_text);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let back_ok = self.stack.len() > 1 && self.stack.last().is_some_and(|p| p.can_go_back());
         let title = self.stack.last().map(|p| p.title()).unwrap_or_default();

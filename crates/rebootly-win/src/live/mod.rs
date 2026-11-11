@@ -9,6 +9,7 @@
 mod access;
 mod attrs;
 mod capture;
+pub mod clipboard;
 mod cmd;
 mod knownfolder;
 mod power;

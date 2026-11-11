@@ -5,13 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::{RecoveryKey, grouped_key};
+use rebootly_core::volume::{RecoveryKey, tidy_key};
 
 use super::{BackupCtx, preflight::PreflightScreen, users::UsersScreen};
 use crate::app::{Ctx, Nav, Screen};
@@ -250,10 +250,17 @@ impl Screen for SourceScreen {
                     self.error = None;
                     self.unlock(cx);
                 }
+                // Paste: the clipboard on Windows/WinPE (terminals elsewhere
+                // paste by typing); a whole key in the text wins.
+                _ if is_paste(&k) => {
+                    if let Some(t) = rebootly_host::clipboard_text() {
+                        entry.field.value = tidy_key(&format!("{}{t}", entry.field.value));
+                    }
+                }
                 _ => {
                     // Shown as typed, in groups of 6 (dashes are added).
                     if entry.field.key(&k) {
-                        entry.field.value = grouped_key(&entry.field.value);
+                        entry.field.value = tidy_key(&entry.field.value);
                     }
                 }
             }
@@ -286,3 +293,12 @@ impl Screen for SourceScreen {
     }
 }
 
+
+/// Ctrl+V or Shift+Insert.
+fn is_paste(k: &KeyEvent) -> bool {
+    match k.code {
+        KeyCode::Char('v') => k.modifiers.contains(KeyModifiers::CONTROL),
+        KeyCode::Insert => k.modifiers.contains(KeyModifiers::SHIFT),
+        _ => false,
+    }
+}

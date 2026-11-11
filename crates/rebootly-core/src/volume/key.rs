@@ -38,6 +38,53 @@ pub fn grouped(input: &str) -> String {
     out
 }
 
+/// The 48 digits of a whole key at byte `start`: 8 groups of 6 digits,
+/// each but the first optionally after one dash or space, and no digit
+/// right after.
+fn key_at(b: &[u8], start: usize) -> Option<String> {
+    let mut d = String::with_capacity(48);
+    let mut j = start;
+    for g in 0..8 {
+        if g > 0 && matches!(b.get(j), Some(b'-' | b' ')) {
+            j += 1;
+        }
+        for _ in 0..6 {
+            let c = *b.get(j).filter(|c| c.is_ascii_digit())?;
+            d.push(c as char);
+            j += 1;
+        }
+    }
+    (!b.get(j).is_some_and(u8::is_ascii_digit)).then_some(d)
+}
+
+/// The first whole key in a text, grouped: e.g. a line copied from
+/// aka.ms/myrecoverykey, which also holds the key ID and a date.
+pub fn find_key(text: &str) -> Option<String> {
+    let b = text.as_bytes();
+    (0..b.len())
+        .filter(|&i| b[i].is_ascii_digit() && (i == 0 || !b[i - 1].is_ascii_digit()))
+        .find_map(|i| key_at(b, i))
+        .map(|d| grouped(&d))
+}
+
+/// A pasted text as key digits: the key found in it, or its digits if it
+/// holds nothing else but dashes and spaces (part of a key). `None` if it
+/// isn't a key (so other digits don't creep in).
+pub fn pasted_digits(text: &str) -> Option<String> {
+    if let Some(k) = find_key(text) {
+        return Some(k.replace('-', ""));
+    }
+    let t = text.trim();
+    (!t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | ' ')))
+        .then(|| t.chars().filter(char::is_ascii_digit).collect())
+}
+
+/// What a key field shows after an edit or a paste: a whole key found in
+/// it, else its digits grouped.
+pub fn tidy(text: &str) -> String {
+    find_key(text).unwrap_or_else(|| grouped(text))
+}
+
 /// Digits typed so far, and the first finished group (1-based) that can't
 /// be right.
 pub fn progress(input: &str) -> (usize, Option<usize>) {
@@ -149,6 +196,23 @@ mod tests {
             "18 of 48 digits; group 3 isn't right, check it"
         );
         assert!(typing_status(&format!("{KEY}1")).contains("too many"));
+    }
+
+    #[test]
+    fn finds_a_key_in_pasted_text() {
+        let page = format!("Key ID: 1A2B3C4D\tRecovery key: {KEY}\tUploaded 11/11/2026");
+        assert_eq!(find_key(&page).as_deref(), Some(KEY));
+        assert_eq!(find_key(&KEY.replace('-', " ")).as_deref(), Some(KEY));
+        let plain: String = KEY.chars().filter(char::is_ascii_digit).collect();
+        assert_eq!(find_key(&plain).as_deref(), Some(KEY));
+        // Not 6-digit groups, or too long.
+        assert_eq!(find_key("2026-11-11 123456"), None);
+        assert_eq!(find_key(&format!("{plain}0")), None);
+        assert_eq!(pasted_digits(&page), Some(plain.clone()));
+        assert_eq!(pasted_digits(" 123456-23 "), Some("12345623".into()));
+        assert_eq!(pasted_digits("Key ID 1A2B, 11/11/2026"), None);
+        assert_eq!(tidy(&format!("000000-{page}")), KEY);
+        assert_eq!(tidy("1234567"), "123456-7");
     }
 
     #[test]

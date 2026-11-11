@@ -2,7 +2,9 @@
 //! the digits are shown as typed, in groups of 6 like Windows' own recovery
 //! screen, with a count or the group that has a typo. After Enter the line
 //! is rewritten as "entered", so the key isn't left in the console's
-//! history (or in output pasted elsewhere).
+//! history (or in output pasted elsewhere). Ctrl+V / Shift+Insert paste
+//! from the clipboard; a page copied with the key ID and date around the
+//! key works too (the key is found in it).
 
 use std::io::{self, BufRead, IsTerminal, Write};
 
@@ -11,7 +13,7 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, Ke
 use ratatui::crossterm::style::Print;
 use ratatui::crossterm::terminal::{self, Clear, ClearType};
 use ratatui::crossterm::{execute, queue};
-use rebootly_core::volume::{grouped_key, key_progress};
+use rebootly_core::volume::{find_key, grouped_key, key_progress, pasted_key_digits};
 
 /// What a key press did to the line.
 #[derive(Debug, PartialEq, Eq)]
@@ -20,12 +22,16 @@ pub enum Step {
     /// 48 digits, every group plausible.
     Done(String),
     Cancel,
+    /// Ctrl+V / Shift+Insert: read the clipboard and call [`KeyLine::paste`].
+    Paste,
 }
 
 /// The line being typed (digits only; dashes are only shown).
 #[derive(Default)]
 pub struct KeyLine {
     digits: String,
+    /// Shown instead of the count until the next key.
+    note: Option<&'static str>,
 }
 
 impl KeyLine {
@@ -34,9 +40,13 @@ impl KeyLine {
         if k.kind != KeyEventKind::Press {
             return Step::Continue;
         }
+        self.note = None;
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = k.modifiers.contains(KeyModifiers::SHIFT);
         match k.code {
             KeyCode::Char('c') if ctrl => return Step::Cancel,
+            KeyCode::Char('v') if ctrl => return Step::Paste,
+            KeyCode::Insert if shift => return Step::Paste,
             KeyCode::Esc => return Step::Cancel,
             KeyCode::Char(c) if c.is_ascii_digit() && !ctrl && self.digits.len() < 48 => {
                 self.digits.push(c);
@@ -52,13 +62,27 @@ impl KeyLine {
         Step::Continue
     }
 
+    /// Pasted text: a whole key in it replaces the line; part of a key
+    /// (digits, dashes, spaces) is added; anything else is refused.
+    pub fn paste(&mut self, text: Option<&str>) {
+        if let Some(k) = text.and_then(find_key) {
+            self.digits = k.replace('-', "");
+        } else if let Some(d) = text.and_then(pasted_key_digits) {
+            self.digits.push_str(&d);
+            self.digits.truncate(48);
+        } else {
+            self.note = Some("clipboard: no key");
+        }
+    }
+
     /// The line as shown; at most 79 columns (fits an 80-column console,
     /// so redrawing in place never wraps).
     pub fn render(&self) -> String {
         let (n, bad) = key_progress(&self.digits);
-        let status = match bad {
-            Some(g) => format!("group {g} is wrong"),
-            None => format!("{n}/48"),
+        let status = match (self.note, bad) {
+            (Some(note), _) => note.to_string(),
+            (None, Some(g)) => format!("group {g} is wrong"),
+            (None, None) => format!("{n}/48"),
         };
         format!("Key: {}  {status}", grouped_key(&self.digits))
     }
@@ -95,11 +119,21 @@ pub fn recovery_key() -> io::Result<Option<String>> {
     };
     show(&mut err, &line.render())?;
     loop {
-        let Event::Key(k) = event::read()? else {
-            continue;
+        let step = match event::read()? {
+            Event::Key(k) => line.key(&k),
+            // A terminal's own paste (bracketed, on Unix terminals).
+            Event::Paste(text) => {
+                line.paste(Some(&text));
+                Step::Continue
+            }
+            _ => continue,
         };
-        match line.key(&k) {
+        match step {
             Step::Continue => show(&mut err, &line.render())?,
+            Step::Paste => {
+                line.paste(rebootly_host::clipboard_text().as_deref());
+                show(&mut err, &line.render())?;
+            }
             Step::Done(key) => {
                 show(&mut err, "Key: entered (48 digits)")?;
                 execute!(err, Print("\r\n"))?;
@@ -159,6 +193,30 @@ mod tests {
         let mut short = KeyLine::default();
         typed(&mut short, "123");
         assert_eq!(short.key(&press(KeyCode::Enter)), Step::Continue);
+    }
+
+    #[test]
+    fn paste_takes_the_key_out_of_copied_text() {
+        let mut l = KeyLine::default();
+        let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
+        let shift_ins = KeyEvent::new(KeyCode::Insert, KeyModifiers::SHIFT);
+        assert_eq!(l.key(&ctrl_v), Step::Paste);
+        assert_eq!(l.key(&shift_ins), Step::Paste);
+        typed(&mut l, "999");
+        l.paste(Some(&format!("Key ID: 1A2B3C4D  Recovery key: {KEY}  11/11/2026")));
+        assert_eq!(l.render(), format!("Key: {KEY}  48/48"));
+        assert_eq!(l.key(&press(KeyCode::Enter)), Step::Done(KEY.into()));
+
+        // Part of a key is added; anything else is refused with a note.
+        let mut l = KeyLine::default();
+        l.paste(Some("000000-0000"));
+        assert_eq!(l.render(), "Key: 000000-0000  10/48");
+        l.paste(Some("hello 2026"));
+        assert_eq!(l.render(), "Key: 000000-0000  clipboard: no key");
+        l.paste(None);
+        assert!(l.render().ends_with("clipboard: no key"));
+        typed(&mut l, "1");
+        assert_eq!(l.render(), "Key: 000000-00001  11/48");
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use eframe::egui::{self, RichText};
 use rebootly_core::backup::profile::JobProfile;
 use rebootly_core::install::WindowsInstall;
-use rebootly_core::volume::{RecoveryKey, Volume, grouped_key, key_status};
+use rebootly_core::volume::{RecoveryKey, Volume, key_status, tidy_key};
 use rebootly_host::session::BackupCtx;
 
 use super::accounts::AccountsPage;
@@ -125,14 +125,15 @@ impl SourcePage {
         ui.horizontal(|ui| {
             let l = ui.label("Recovery key");
             // Shown as typed, in groups of 6 (dashes are added), so it can
-            // be checked against the printout.
+            // be checked against the printout. A pasted page with the key
+            // ID and date around the key: the key is picked out.
             let out = egui::TextEdit::singleline(&mut self.key)
                 .font(egui::TextStyle::Monospace)
                 .desired_width(460.0)
                 .show(ui);
             let resp = out.response.response.clone().labelled_by(l.id);
             if resp.changed() {
-                let g = grouped_key(&self.key);
+                let g = tidy_key(&self.key);
                 if g != self.key {
                     self.key = g;
                     let mut st = out.state;

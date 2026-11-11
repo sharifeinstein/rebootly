@@ -30,6 +30,9 @@ fn main() {
             .with_inner_size([960.0, 700.0])
             .with_min_inner_size([720.0, 520.0]),
         renderer: eframe::Renderer::Wgpu,
+        // Built without eframe's clipboard crates: on Windows the shortcuts
+        // are handled by `clipboard::translate` (system clipboard paste).
+        clipboard_shortcuts: !cfg!(windows),
         wgpu_options: WgpuConfiguration {
             wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
                 native_adapter_selector: Some(Arc::new(rebootly_gui::pick_adapter)),
