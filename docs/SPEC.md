@@ -197,7 +197,7 @@ Detect a BitLocker volume and prompt for the 48-digit recovery key (shown as typ
 - A **TPM PIN can't** be used: the TPM releases the key only to the original PC's own Windows boot (its measurements differ under WinPE, Linux or another PC), so such a drive opens offline only with its recovery key. The screens say so.
 
 ### 7.2 Mounting (Linux)
-**Read-only always:** `mount -t ntfs3 -o ro`, falling back to `ntfs-3g -o ro`. Fast Startup/hibernated and dirty volumes are mounted read-only and the user is told why. Mounts go under `/run/rebootly/<device>` and are undone at exit (`rebootly-cli open` leaves them for later commands; `rebootly-cli close` undoes them). Hibernation (Fast Startup) is detected from the `HIBR` header of `hiberfil.sys` on every offline volume (also WinPE) and shown in pre-flight and the report.
+**Read-only always** (sources; backup targets are the one exception, §8): `mount -t ntfs3 -o ro`, falling back to `ntfs-3g -o ro`. Fast Startup/hibernated and dirty volumes are mounted read-only and the user is told why. Mounts go under `/run/rebootly/<device>` and are undone at exit (`rebootly-cli open` leaves them for later commands; `rebootly-cli close` undoes them). Hibernation (Fast Startup) is detected from the `HIBR` header of `hiberfil.sys` on every offline volume (also WinPE) and shown in pre-flight and the report.
 
 ### 7.3 WinPE limits
 - The X: RAM disk has tiny scratch space: write nothing there except state to the target.
@@ -211,23 +211,29 @@ Detect a BitLocker volume and prompt for the 48-digit recovery key (shown as typ
 ```
 USB (Ventoy)
 ├─ [Ventoy EFI partition]
-└─ VENTOY (exFAT data partition)
+└─ VENTOY (exFAT or NTFS data partition; not FAT32)
+   ├─ .rebootly-root                  # marker: Rebootly finds its stick by it
    ├─ iso/
-   │  ├─ rebootly-rescue-alpine.iso   # built by rescue/alpine/build.sh: ntfs3, cryptsetup, dislocker, auto-starts TUI
-   │  └─ winpe-rebootly.iso           # user-built via rescue/winpe/build.cmd (ADK + WinPE add-on)
-   ├─ bin/win-x64/rebootly.exe
-   ├─ bin/win-arm64/rebootly.exe
-   ├─ bin/linux-x64/rebootly
+   │  ├─ rebootly-rescue-x86_64.iso   # rescue/alpine/build.sh: cryptsetup, ntfs3/ntfs-3g, exFAT; auto-starts the text screens
+   │  ├─ rebootly-rescue-x86_64.sources.txt  # GPL source notice
+   │  └─ rebootly-winpe-amd64.iso     # user-built: rescue/winpe/build.ps1 (ADK + WinPE add-on)
+   ├─ bin/win-x64/{Rebootly.exe,rebootly-cli.exe}
+   ├─ bin/win-arm64/…                 # optional
+   ├─ bin/linux-x64/rebootly-cli      # static (musl), any x86-64 Linux
    ├─ packs/
-   ├─ backups/<MACHINE>_<YYYY-MM-DD_HHMM>/
-   ├─ start.cmd / start.sh           # pick the right binary
-   └─ README.txt
+   ├─ Rebootly/<MACHINE>_<YYYY-MM-DD_HHMM>/   # backups (the drive target folder, §11)
+   ├─ ventoy/ventoy.json              # menu names, VTOY_DEFAULT_SEARCH_ROOT=/iso, VTOY_LINUX_REMOUNT=1
+   ├─ start.cmd / start.sh            # pick the right binary
+   └─ README.txt, GUIDE.txt
 ```
 
-- **WinPE is not redistributable** (license): ship the build script (`copype`, add `WinPE-SecureStartup`, `WinPE-WMI`, `WinPE-Scripting`, networking; `startnet.cmd` launches the TUI from the stick), not the image.
-- The Alpine image is built from an open-source script and is fine to distribute (it includes GPL tools, so attach source/notices).
-- Secure Boot: Ventoy needs its MOK enrolled once, or the user disables Secure Boot. Document both.
-- In WinPE/Alpine the tool finds its own stick by looking for a marker file (`.rebootly-root`).
+- Filled by `rescue/make-stick.ps1 -Drive E:` (or `-OutDir` → `dist/Rebootly-<v>-stick.zip` from `scripts/package-release.ps1`). The user installs Ventoy themselves (`Ventoy2Disk`).
+- **WinPE is not redistributable** (license): ship the build script, not the image. `build.ps1`: `copype`, then `WinPE-WMI`, `WinPE-NetFX`, `WinPE-Scripting`, `WinPE-PowerShell`, `WinPE-StorageWMI`, `WinPE-EnhancedStorage`, `WinPE-SecureStartup` (+ language packs), 512 MB scratch space, `MakeWinPEMedia /ISO`. The image is generic: `startnet.cmd` runs `wpeinit` and `rebootly.cmd`, which finds the stick and calls its `start.cmd` (text screens; WinPE has no GPU for the window).
+- The Alpine image is built from an open-source script and is fine to distribute (it includes GPL tools: the build writes the source notice). `build.sh` runs on Alpine (or in an `alpine` container: `build-in-docker.sh`/`.ps1`), builds `rebootly-cli` statically for musl, and makes the ISO with aports' `mkimage.sh` and a profile (`mkimg.rebootly.sh`) and overlay (`genapkovl-rebootly.sh`): `tty1` runs `rebootly-start` instead of a login (mounts the stick, runs its `start.sh`, then `rebootly-cli close` and a menu: again, keyboard layout, network, shell, restart, power off); no network at boot. No dislocker (Alpine has it only in testing): cryptsetup only.
+- **Writing on Linux** happens only to backup targets: `rebootly-cli target --stick` (the volume with `.rebootly-root`) or `target <device>` / the text screens' "Use /dev/sdX…" entries, mounted read-write under `/media/<label>`. Every candidate is probed read-only first; a disk with Windows on it, or a locked one, is refused. `rebootly-cli close` syncs and unmounts the targets too. Ventoy holds its data partition after a Linux boot; `VTOY_LINUX_REMOUNT` lifts that (experimental in Ventoy), otherwise a second USB drive is the target.
+- WinPE never offers its X: RAM disk as a target (§7.3).
+- Secure Boot: Ventoy needs its MOK enrolled once, or the user disables Secure Boot. Documented in the stick's README.txt.
+- In WinPE/Alpine the tool finds its own stick by looking for the marker file (`.rebootly-root`).
 
 ---
 

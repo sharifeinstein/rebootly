@@ -1,0 +1,7 @@
+# Batch files need CRLF (labels and goto misbehave with LF); shell scripts
+# need LF (they run on Linux, also from a Windows checkout via WSL/Docker).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+rescue/alpine/rebootly-start text eol=lf

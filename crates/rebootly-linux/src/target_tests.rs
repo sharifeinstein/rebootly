@@ -45,9 +45,20 @@ fn exfat_is_probed_then_mounted_read_write_under_media_and_closed_later() {
     let lines = fake.lines();
     assert!(lines[2].ends_with(&root.display().to_string()), "{lines:?}");
 
+    // Closing: flushed and unmounted; an entry already unmounted is only
+    // tidied (closing twice is fine).
     fake.expect("sync", 0, "", "").expect("umount", 0, "", "");
-    assert!(t.close_all().is_empty());
+    let gone = d.media.path().join("gone");
+    std::fs::create_dir(&gone).unwrap();
+    t.remember(&gone).unwrap();
+    let info = format!(
+        "36 27 7:0 / {} rw,noatime - fuseblk /dev/sdb1 rw\n",
+        root.display()
+    );
+    assert!(t.close_all_in(&info).is_empty());
+    assert!(!gone.exists());
     assert_eq!(fake.lines()[4], format!("umount {}", root.display()));
+    assert_eq!(fake.lines().len(), 5, "{:?}", fake.lines());
     assert!(!root.exists());
     assert!(!d.base.path().join("targets").exists());
 }
@@ -131,7 +142,10 @@ fn locked_and_read_only_mounts_are_refused_and_rw_mounts_used_as_they_are() {
 #[test]
 fn a_busy_ventoy_partition_says_what_to_do() {
     let d = dirs();
-    let fake = Fake::default();
+    let fake = Fake {
+        missing: vec!["mount.exfat-fuse"],
+        ..Fake::default()
+    };
     fake.expect(
         "mount -t exfat -o ro",
         32,

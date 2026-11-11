@@ -7,6 +7,7 @@
 //! tested everywhere; only Linux front ends use it.
 
 pub mod cmd;
+mod close;
 pub mod discover;
 pub mod mount;
 pub mod target;

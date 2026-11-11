@@ -1,0 +1,20 @@
+{
+  "control": [
+    {
+      "VTOY_DEFAULT_SEARCH_ROOT": "/iso"
+    },
+    {
+      "VTOY_LINUX_REMOUNT": "1"
+    }
+  ],
+  "menu_alias": [
+    {
+      "image": "/iso/rebootly-rescue-x86_64.iso",
+      "alias": "Rebootly rescue (Linux): back up a PC that won't start"
+    },
+    {
+      "image": "/iso/rebootly-winpe-amd64.iso",
+      "alias": "Rebootly rescue (WinPE): back up a PC that won't start"
+    }
+  ]
+}

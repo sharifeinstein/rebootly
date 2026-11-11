@@ -1,0 +1,55 @@
+#!/bin/sh
+# Rebootly rescue: runs on tty1 at boot (see genapkovl-rebootly.sh).
+# Mounts the Rebootly stick for writing, starts Rebootly (the stick's own
+# copy via its start.sh when there is one, so a stick updated with a newer
+# Rebootly needs no new ISO), and afterwards flushes and unmounts
+# everything and offers a small menu.
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export TERM="${TERM:-linux}" HOME=/root
+export REBOOTLY_RESCUE=1
+bundled=/usr/local/bin/rebootly-cli
+
+# A console font with more of the characters the screens use.
+setfont Lat2-Terminus16 2>/dev/null || true
+
+# Disks can show up a little after boot (USB adapters).
+mdev -s 2>/dev/null
+sleep 2
+
+while true; do
+    clear
+    echo "Rebootly rescue: looking for the Rebootly stick..."
+    stick=$("$bundled" target --stick --quiet 2>/tmp/rebootly-stick.err)
+    if [ -n "$stick" ] && [ -f "$stick/start.sh" ]; then
+        sh "$stick/start.sh"
+    else
+        if [ -z "$stick" ]; then
+            echo "The Rebootly stick wasn't found or can't be written to:"
+            cat /tmp/rebootly-stick.err 2>/dev/null
+            echo "Rebootly starts anyway; save the backup to another USB drive."
+            sleep 4
+        fi
+        "$bundled" tui ${stick:+--packs-dir "$stick/packs"}
+    fi
+    echo
+    echo "Flushing and unmounting the drives..."
+    "$bundled" close
+    echo
+    echo "Rebootly has closed; the drives can be unplugged."
+    echo "  Enter  start Rebootly again"
+    echo "  k      keyboard layout"
+    echo "  n      network (for a NAS share)"
+    echo "  s      shell (exit to come back)"
+    echo "  r      restart the PC"
+    echo "  p      power off"
+    printf "> "
+    read -r a
+    case $a in
+        k | K) setup-keymap ;;
+        n | N) setup-interfaces -a -r && echo "Network started." && sleep 2 ;;
+        s | S) clear && cat /etc/motd && /bin/sh -l ;;
+        r | R) reboot && sleep 60 ;;
+        p | P) poweroff && sleep 60 ;;
+    esac
+done

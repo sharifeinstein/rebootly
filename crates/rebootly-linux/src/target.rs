@@ -220,12 +220,28 @@ impl<'a> TargetMounter<'a> {
 
     /// Flush and unmount every target mounted by Rebootly. Returns errors.
     pub fn close_all(&self) -> Vec<String> {
+        let info = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+        self.close_all_in(&info)
+    }
+
+    /// [`Self::close_all`] with the mount table given; folders no longer
+    /// mounted (closed earlier) are only removed.
+    pub fn close_all_in(&self, mountinfo: &str) -> Vec<String> {
         let Ok(list) = std::fs::read_to_string(self.list_file()) else {
             return Vec::new();
         };
+        let mounted: Vec<String> = mountinfo
+            .lines()
+            .filter_map(|l| l.split(' ').nth(4))
+            .map(crate::discover::unescape)
+            .collect();
         let _ = self.run.run("sync", &[], None);
         let mut errs = Vec::new();
         for d in list.lines().filter(|l| !l.is_empty()).rev() {
+            if !mounted.iter().any(|m| m == d) {
+                let _ = std::fs::remove_dir(d);
+                continue;
+            }
             match self.run.run("umount", &[d], None) {
                 Ok(o) if o.ok() => {
                     let _ = std::fs::remove_dir(d);

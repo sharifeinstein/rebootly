@@ -60,13 +60,20 @@ disk). If the disk is locked with BitLocker it is listed as "Unlock E:":
 type its 48-digit recovery key (for a Microsoft account it is at
 aka.ms/myrecoverykey). Rebootly only reads the old disk.
 
-From a recovery console (WinPE, or a Linux rescue USB), run
+Or start the old PC from a Rebootly stick: the Rebootly-...-stick.zip
+download, unzipped onto a USB stick prepared with Ventoy (ventoy.net).
+It starts a small rescue system that runs Rebootly by itself; its
+README.txt explains the steps (and Secure Boot).
+
+From any recovery console (WinPE, or a Linux rescue USB), run
 rebootly-cli: it finds the Windows on the disks, offers to unlock
 BitLocker, and opens every disk read-only. The same steps as commands:
   rebootly-cli volumes            list the disks Windows could be on
   rebootly-cli open <disk>        unlock / open one read-only
+  rebootly-cli target <disk>      (Linux) use a USB drive for writing
   rebootly-cli backup --windows-root <where it opened> --target <dir>
-  rebootly-cli close              (Linux) close what "open" opened
+  rebootly-cli close              (Linux) flush and close what
+                                  "open" and "target" opened
 
 
 RESTORING ON THE NEW PC

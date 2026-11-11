@@ -2,7 +2,10 @@
 .SYNOPSIS
   Builds the Windows release zip: dist\Rebootly-<version>-windows-x64.zip
   (+ .sha256), with Rebootly.exe, rebootly-cli.exe, packs\, README.txt,
-  LICENSE.txt and THIRD-PARTY-LICENSES.html.
+  LICENSE.txt and THIRD-PARTY-LICENSES.html; and the stick's contents,
+  dist\Rebootly-<version>-stick.zip (unzip onto a Ventoy stick), with the
+  Linux build and rescue ISOs from dist\ when they were built
+  (rescue\alpine\build.sh, rescue\winpe\build.ps1).
 
 .EXAMPLE
   .\scripts\package-release.ps1 -DonateUrl https://buymeacoffee.com/yourname
@@ -66,7 +69,21 @@ Compress-Archive -Path $dist -DestinationPath $zip
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 "$hash  $name.zip" | Set-Content (Join-Path "dist" "$name.zip.sha256") -Encoding ascii
 
+$stickName = "Rebootly-$version-stick"
+$stick = Join-Path "dist" $stickName
+Step "Packaging $stickName"
+if (Test-Path $stick) { Remove-Item -Recurse -Force $stick }
+& (Join-Path $PSScriptRoot "..\rescue\make-stick.ps1") -OutDir $stick
+$stickZip = Join-Path "dist" "$stickName.zip"
+if (Test-Path $stickZip) { Remove-Item $stickZip }
+# The folder's contents go to the zip's top level (they go onto the stick's root).
+Compress-Archive -Path (Join-Path $stick "*") -DestinationPath $stickZip
+$stickHash = (Get-FileHash $stickZip -Algorithm SHA256).Hash.ToLower()
+"$stickHash  $stickName.zip" | Set-Content (Join-Path "dist" "$stickName.zip.sha256") -Encoding ascii
+
 & (Join-Path $dist "rebootly-cli.exe") --version
 Write-Host ""
 Write-Host "Built $zip" -ForegroundColor Green
 Write-Host "SHA-256 $hash"
+Write-Host "Built $stickZip" -ForegroundColor Green
+Write-Host "SHA-256 $stickHash"
