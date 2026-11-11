@@ -25,13 +25,11 @@ Current milestone: M6 — text screens and Windows GUI implemented and tested in
 Last session: 2026-11-10 — M6 built in two parts. (1) Text screens (`rebootly-cli` with no command; ratatui): start menu, Rescue flow in WinPE/Linux, Quick/Full/Custom, plain-language pre-flight, progress with pause/stop/continue, restore with preview and dry run, tick-box checklists, job profiles, `report.html`. (2) After the owner asked for a real Windows GUI: `Rebootly.exe` (crate `rebootly-gui`, egui/eframe 0.37, wgpu renderer with software fallback, admin manifest, Segoe UI with symbol/CJK fallbacks) with the same flows plus Undo; slow steps on worker threads. The CLI binary was renamed `rebootly-cli` (Windows can't hold `Rebootly.exe` and `rebootly.exe` side by side). Shared machine layer `rebootly-host`. 151 tests (8 TUI flows with scripted keys, 3 GUI flows through the accessibility tree), clippy clean on Linux and the Windows type-check; GUI pages looked at under Xvfb (software Vulkan), TUI in a real pty.
 
 ## Next step
-1. **User, on Windows (elevated PowerShell in `D:\Projects\rebootly`):** `rustup update` (the GUI needs Rust 1.95+; `rustc --version`), `git log -1`, `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`. Then:
-   - `.\target\release\Rebootly.exe` (asks for admin): Back up → This PC → accounts → Quick → a USB stick or "Another folder" (Browse…) → pre-flight → Start; try Pause/Resume and Stop… then "Continue the unfinished backup"; Open the report. On the VM: Restore (Picard → Riker) with Dry run first, then Restore…; then Undo a restore. Check the window opens on the VM (software rendering) and looks right at 100/150% scaling.
-   - `.\target\release\rebootly-cli.exe` with no arguments: the text screens, in Windows Terminal and the old console.
-   Paste back anything odd (layout, wording, errors).
-2. After that check, mark M6 done and start M7 (Offline: WinPE detection, BitLocker unlock, Linux ro mount, volume discovery; SPEC §3.3, §7) in a fresh chat. The Rescue flow's BitLocker step slots into `rebootly-tui/src/backup/source.rs` (WinPE uses the text screens).
-3. Still untested for real (from M5): `winget import/export`, Wi-Fi export/`netsh wlan add profile`, `--tasks`, `--cloud-files hydrate`. Worth one pass on a real PC before M9.
-4. Open from M4: the hidden CLI passphrase prompt received fewer than 8 characters twice on the VM; the TUI/GUI passphrase fields say how many characters arrived.
+1. **User, on Windows:** test the GUI and text screens (elevated PowerShell in `D:\Projects\rebootly`): `rustup update` (GUI needs Rust 1.95+), `cargo build --release`, `cargo test`, `cargo clippy --all-targets -- -D warnings`, then `.\target\release\Rebootly.exe` on the laptop (backup only) and on the VM (backup, Picard → Riker restore with a dry run first, Undo a restore; window opens with software rendering?). Paste back anything odd. Then try the release script: `.\scripts\package-release.ps1 -DonateUrl <link>` → `dist\Rebootly-0.1.0-windows-x64.zip`.
+2. **Owner to provide:** the Buy Me a Coffee / Ko-fi link (passed to the release script; nothing to change in the code). Create the GitHub repo when ready (`sharifeinstein/rebootly`), so releases have a home.
+3. **Next milestone: M7** (Offline: WinPE detection, BitLocker unlock, Linux read-only mount, volume discovery; SPEC §3.3, §7) **in a fresh chat** (this one covered M6, the GUI and release prep). The Rescue flow's BitLocker step slots into `rebootly-tui/src/backup/source.rs` (WinPE uses the text screens). Then M8 (rescue USB), M9 (hardening & release).
+4. Still untested for real (from M5): `winget import/export`, Wi-Fi export/`netsh wlan add profile`, `--tasks`, `--cloud-files hydrate`. Worth one pass on a real PC before a public release.
+5. Open from M4: the hidden CLI passphrase prompt received fewer than 8 characters twice on the VM; the TUI/GUI passphrase fields say how many characters arrived.
 
 ## Milestones
 - [x] M1 Core resolver
@@ -42,7 +40,7 @@ Last session: 2026-11-10 — M6 built in two parts. (1) Text screens (`rebootly-
 - [ ] M6 TUI + Windows GUI (implemented; Windows check pending)
 - [ ] M7 Offline (WinPE/Linux, BitLocker)
 - [ ] M8 Rescue USB (Ventoy, Alpine, WinPE scripts)
-- [ ] M9 Hardening & release
+- [ ] M9 Hardening & release (code signing: maybe, the very last thing)
 
 ## Decisions log
 - 2026-11-09: Own read-only regf parser instead of `nt-hive` — nt-hive is GPL-2.0-or-later, which would force the whole tool to GPL; SPEC allowed "or our own". SPEC §2 updated.
@@ -130,6 +128,10 @@ Last session: 2026-11-10 — M6 built in two parts. (1) Text screens (`rebootly-
 - 2026-11-10: Version saved as tag `v0.1.0-preview` (commit 3214e38, before the donation card). Rebootly will be published free (owner).
 - 2026-11-10: Optional donation card ("Rebootly is free … buy me a coffee", QR code + "Open the page") at the end of a successful backup and a real (not dry-run) restore in the GUI; one dim line on the text screens' backup-done screen. Never blocks anything: "Close" hides it for the run, "Don't show this again" writes `%LOCALAPPDATA%\Rebootly\no-donation-card`. The link is set at build time (`REBOOTLY_DONATE_URL`, `rebootly_host::DONATE_URL`); without it nothing shows. QR drawn by `qrcode` (MIT/Apache, no image deps), black on white in both themes; checked with a scanner (zbarimg).
 
+- 2026-11-11: **Code signing is optional and last** (owner): Rebootly is free, so no paid signing service for now; unsigned builds explain SmartScreen's "More info → Run anyway" in the release README. Revisit at the very end of M9.
+- 2026-11-11: Release prep: `about.toml` + `about.hbs` → `THIRD-PARTY-LICENSES.html` (cargo-about 0.9, Windows target, fails on licences outside the accepted list; regenerate with `scripts/licenses.sh` after dependency changes; currently Apache/MIT/BSD/ISC/Zlib/Unicode/OFL/Ubuntu-font). `scripts/package-release.ps1 [-DonateUrl URL] [-SkipTests]` builds `dist\Rebootly-<version>-windows-x64.zip` (+ `.sha256`) with both exes, `packs\`, `README.txt` (= `docs/README-RELEASE.txt`, user guide), `LICENSE.txt` and the notices. The donation link is compiled in via `REBOOTLY_DONATE_URL` (cargo tracks it, so changing it rebuilds).
+- 2026-11-11: Repo backups (git bundles, full history and tags) go in `D:\Projects\rebootly-backups\` with a README on restoring (`git clone <bundle> rebootly`). First one: `rebootly_v0.1.0-preview_da72509_20261111.bundle`.
+
 ## Known issues / TODO
 - Run for real on Windows 10 (2026-11-10): Get-Printer, powercfg, dism, pnputil, Export-PfxCertificate, WMI shadow copies, streams. Not yet: winget export and netsh Wi-Fi export (not available on the test VM), OneDrive hydrate. The core side is tested with the `FakeLive` double (`backup/tests/live_like.rs`).
 - `--preflight` in live mode runs all the captures (seconds to a minute; with `--sensitive` also the Wi-Fi and certificate exports, into a temp folder that is deleted).
@@ -149,7 +151,7 @@ Last session: 2026-11-10 — M6 built in two parts. (1) Text screens (`rebootly-
 - Target filesystem type: Linux (/proc/self/mountinfo) and live Windows (`GetVolumeInformationW`, passed in by the CLI). WinPE uses the Windows binary, so it is covered too once tested.
 - Large backups: the manifest holds every file in memory and is written as one JSON file (~200 B per file). Fine up to a few hundred thousand files; consider streaming it later.
 - SMART check and the `ddrescue` suggestion (SPEC §3.5) aren't implemented; they need platform code (M4/M7).
-- `cargo-deny` config not added yet (M9, or earlier once there are more deps).
+- `cargo-deny` config not added yet (M9); licences are already checked by cargo-about (`scripts/licenses.sh`).
 
 - Restore: `min_app_version` gating not implemented (`os:` is); file ACLs and read-only attributes aren't restored; `post_restore` commands aren't run (listed). Packs whose app is running are skipped as a whole. Long-running `winget import` output goes straight to the console (2 h timeout).
 - Restore of other users' data needs a sign-in as each of them (by design); custom folders are restored by every run (identical the second time).

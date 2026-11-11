@@ -1,0 +1,72 @@
+<#
+.SYNOPSIS
+  Builds the Windows release zip: dist\Rebootly-<version>-windows-x64.zip
+  (+ .sha256), with Rebootly.exe, rebootly-cli.exe, packs\, README.txt,
+  LICENSE.txt and THIRD-PARTY-LICENSES.html.
+
+.EXAMPLE
+  .\scripts\package-release.ps1 -DonateUrl https://buymeacoffee.com/yourname
+
+.PARAMETER DonateUrl
+  Link for the optional "buy me a coffee" card. Without it the card is
+  not shown.
+
+.PARAMETER SkipTests
+  Don't run `cargo test` first.
+#>
+param(
+    [string]$DonateUrl = "",
+    [switch]$SkipTests
+)
+$ErrorActionPreference = "Stop"
+Set-Location (Join-Path $PSScriptRoot "..")
+
+function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
+
+$m = Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
+if (-not $m) { throw "version not found in Cargo.toml" }
+$version = $m.Matches[0].Groups[1].Value
+
+if (git status --porcelain) {
+    Write-Warning "The working tree has uncommitted changes; the version line will name the last commit."
+}
+
+if (-not $SkipTests) {
+    Step "cargo test"
+    cargo test
+    if ($LASTEXITCODE -ne 0) { throw "tests failed" }
+}
+
+if ($DonateUrl) {
+    $env:REBOOTLY_DONATE_URL = $DonateUrl
+} else {
+    Remove-Item Env:REBOOTLY_DONATE_URL -ErrorAction SilentlyContinue
+    Write-Warning "No -DonateUrl: the donation card won't be shown."
+}
+# The link is compiled in; cargo rebuilds what reads it when it changes.
+Step "cargo build --release"
+cargo build --release -p rebootly-gui -p rebootly-cli
+if ($LASTEXITCODE -ne 0) { throw "build failed" }
+Remove-Item Env:REBOOTLY_DONATE_URL -ErrorAction SilentlyContinue
+
+$name = "Rebootly-$version-windows-x64"
+$dist = Join-Path "dist" $name
+Step "Packaging $name"
+if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
+New-Item -ItemType Directory -Force (Join-Path $dist "packs") | Out-Null
+Copy-Item target\release\Rebootly.exe, target\release\rebootly-cli.exe $dist
+Copy-Item packs\*.yaml (Join-Path $dist "packs")
+Copy-Item docs\README-RELEASE.txt (Join-Path $dist "README.txt")
+Copy-Item LICENSE (Join-Path $dist "LICENSE.txt")
+Copy-Item THIRD-PARTY-LICENSES.html $dist
+
+$zip = Join-Path "dist" "$name.zip"
+if (Test-Path $zip) { Remove-Item $zip }
+Compress-Archive -Path $dist -DestinationPath $zip
+$hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+"$hash  $name.zip" | Set-Content (Join-Path "dist" "$name.zip.sha256") -Encoding ascii
+
+& (Join-Path $dist "rebootly-cli.exe") --version
+Write-Host ""
+Write-Host "Built $zip" -ForegroundColor Green
+Write-Host "SHA-256 $hash"

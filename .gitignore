@@ -2,3 +2,4 @@
 **/*.rs.bk
 # Sync bundle used to mirror the tree from the Claude workspace.
 /.rebootly-sync.tar
+/dist

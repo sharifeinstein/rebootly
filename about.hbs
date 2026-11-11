@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rebootly: third-party licences</title>
+<style>
+body{font:15px/1.45 system-ui,Segoe UI,sans-serif;max-width:56rem;margin:2rem auto;padding:0 1rem;color:#1b1b1b}
+h1{font-size:1.5rem}h2{font-size:1.15rem;margin-top:2rem;border-bottom:1px solid #ccc}
+pre{white-space:pre-wrap;background:#f6f6f6;padding:.8rem;font-size:12.5px}
+.muted{color:#666}ul.crates{columns:3;font-size:13px}
+</style>
+</head>
+<body>
+<h1>Third-party licences</h1>
+<p>Rebootly is free software under the Apache License 2.0. It is built with the open-source
+components below; their licences and copyright notices follow.</p>
+<h2>Overview</h2>
+<ul>
+{{#each overview}}<li><a href="#{{id}}">{{name}}</a> <span class="muted">({{count}} components)</span></li>
+{{/each}}
+</ul>
+{{#each licenses}}
+<h2 id="{{id}}">{{name}}</h2>
+<p class="muted">Used by:</p>
+<ul class="crates">
+{{#each used_by}}<li>{{crate.name}} {{crate.version}}</li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+{{/each}}
+</body>
+</html>
