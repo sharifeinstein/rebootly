@@ -182,6 +182,19 @@ pub fn is_bitlocker_boot_sector(sector: &[u8]) -> bool {
     sector.get(3..11) == Some(b"-FVE-FS-")
 }
 
+/// `FVE_E_LOCKED_VOLUME`: what `GetVolumeInformationW` (and `dir`) fail
+/// with on a locked BitLocker volume. Raw reads of `\\.\X:` fail the same
+/// way, so the boot sector can't be relied on while it is locked.
+pub const FVE_E_LOCKED_VOLUME: u32 = 0x8031_0000;
+/// The same as an NTSTATUS (`STATUS_FVE_LOCKED_VOLUME`), in case it's
+/// passed through unmapped.
+const STATUS_FVE_LOCKED_VOLUME: u32 = 0xC021_0000;
+
+/// A failed volume call's last error says "locked by BitLocker".
+pub fn is_locked_volume_error(code: u32) -> bool {
+    code == FVE_E_LOCKED_VOLUME || code == STATUS_FVE_LOCKED_VOLUME
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +302,14 @@ mod tests {
         s[3..11].copy_from_slice(b"NTFS    ");
         assert!(!super::is_bitlocker_boot_sector(&s));
         assert!(!super::is_bitlocker_boot_sector(b"abc"));
+    }
+
+    #[test]
+    fn locked_volume_error() {
+        assert!(super::is_locked_volume_error(0x8031_0000));
+        assert!(super::is_locked_volume_error(0xC021_0000));
+        // ERROR_NOT_READY (card reader without media), ERROR_ACCESS_DENIED
+        assert!(!super::is_locked_volume_error(21));
+        assert!(!super::is_locked_volume_error(5));
     }
 }

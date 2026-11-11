@@ -3,8 +3,10 @@
 //! from this system's own `HKLM\SYSTEM\MountedDevices` (same format as the
 //! offline hive's, so the offline Windows' letters can be matched).
 //!
-//! A locked BitLocker volume has a letter but no filesystem: its boot
-//! sector (read through `\\.\X:`, needs admin) starts with `-FVE-FS-`.
+//! A locked BitLocker volume has a letter but no filesystem: reading its
+//! volume information fails with `FVE_E_LOCKED_VOLUME` (found on the VM;
+//! raw reads of `\\.\X:` are refused too while locked). Fallback: a boot
+//! sector (read through `\\.\X:`, needs admin) starting with `-FVE-FS-`.
 //! Unlocking runs `manage-bde -unlock X: -RecoveryPassword <key>` (WinPE
 //! needs the WinPE-SecureStartup component). Its output is never shown: the
 //! key isn't echoed, but nothing from the command is trusted with it.
@@ -15,6 +17,7 @@ use std::process::Command;
 use std::ptr::null_mut;
 
 use rebootly_core::volume::{RecoveryKey, Volume, VolumeId, VolumeState};
+use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::Storage::FileSystem::{
     GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW,
 };
@@ -22,7 +25,7 @@ use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY
 
 use super::cmd::run_cmd;
 use super::wide::wide;
-use crate::parse::is_bitlocker_boot_sector;
+use crate::parse::{is_bitlocker_boot_sector, is_locked_volume_error};
 
 const DRIVE_REMOVABLE: u32 = 2;
 const DRIVE_FIXED: u32 = 3;
@@ -32,9 +35,9 @@ fn utf16(buf: &[u16]) -> String {
     String::from_utf16_lossy(&buf[..n])
 }
 
-/// (label, filesystem) of `X:\`; `None` when the volume can't be read
-/// (locked, no media).
-fn info(root: &str) -> Option<(String, String)> {
+/// (label, filesystem) of `X:\`; the last error when the volume can't be
+/// read (locked, no media).
+fn info(root: &str) -> Result<(String, String), u32> {
     let w = wide(root);
     let mut label = [0u16; 261];
     let mut fs = [0u16; 64];
@@ -52,7 +55,11 @@ fn info(root: &str) -> Option<(String, String)> {
             fs.len() as u32,
         )
     };
-    (ok != 0).then(|| (utf16(&label), utf16(&fs)))
+    if ok == 0 {
+        // SAFETY: no arguments; read right after the failed call.
+        return Err(unsafe { GetLastError() });
+    }
+    Ok((utf16(&label), utf16(&fs)))
 }
 
 fn total_size(root: &str) -> Option<u64> {
@@ -63,9 +70,10 @@ fn total_size(root: &str) -> Option<u64> {
     (ok != 0).then_some(total)
 }
 
-/// The volume's boot sector says BitLocker (raw read; needs admin).
+/// The volume's boot sector says BitLocker (raw read; needs admin). 4 KiB,
+/// a multiple of both 512-byte and 4K-native sector sizes.
 fn bitlocker_header(letter: char) -> bool {
-    let mut sector = [0u8; 512];
+    let mut sector = vec![0u8; 4096];
     std::fs::File::open(format!(r"\\.\{letter}:"))
         .and_then(|mut f| f.read_exact(&mut sector))
         .is_ok_and(|()| is_bitlocker_boot_sector(&sector))
@@ -113,7 +121,7 @@ pub fn volumes() -> Vec<Volume> {
             continue;
         }
         let (label, fs, state) = match info(&root) {
-            Some((label, fs)) => {
+            Ok((label, fs)) => {
                 let wanted = fs.eq_ignore_ascii_case("ntfs") || fs.eq_ignore_ascii_case("exfat");
                 if !wanted {
                     continue;
@@ -124,10 +132,10 @@ pub fn volumes() -> Vec<Volume> {
                 };
                 (Some(label), Some(fs), state)
             }
-            None if bitlocker_header(letter) => {
+            Err(code) if is_locked_volume_error(code) || bitlocker_header(letter) => {
                 (None, Some("BitLocker".into()), VolumeState::Locked)
             }
-            None => continue,
+            Err(_) => continue,
         };
         out.push(Volume {
             device: format!("{letter}:"),

@@ -140,6 +140,7 @@ Last session: 2026-11-11 — M7. Volume discovery (Linux: lsblk + blkid; WinPE/W
 - 2026-11-11 (M7): Hibernation/Fast Startup = `hiberfil.sys` starting with `HIBR` (any case), checked on every offline install (`Source::source_notes`), shown in pre-flight, the manifest warnings and at unlock. The live wrapper doesn't pass it on. Driver messages ("unclean") become a note too.
 - 2026-11-11 (M7): Windows/WinPE: a locked volume = letter with no readable filesystem whose boot sector (`\\.\X:`, admin) has OEM ID `-FVE-FS-`; unlock with `manage-bde -unlock X: -RecoveryPassword`. WinPE detection unchanged (`reg query …\MiniNT`).
 - 2026-11-11 (M7): The **GUI** also offers "Unlock E:" (owner's common case: the old PC's disk in a USB adapter on the new PC), with the same key checks; after unlocking, the Windows on it is picked.
+- 2026-11-11 (M7 VM check): a locked BitLocker letter was missing from `rebootly-cli volumes` (`open R:` → "no such volume"): Windows refuses raw reads of a locked `\\.\X:` too, so the `-FVE-FS-` check never saw it. Locked now = `GetVolumeInformationW` fails with `FVE_E_LOCKED_VOLUME` (0x80310000), boot sector (4 KiB read) as fallback. SPEC §7 updated.
 - 2026-11-11: `rebootly-linux` is a dependency only on non-Windows targets. `OfflineVolume` moved to `source/offline.rs` (mod.rs was over 400 lines).
 
 ## Known issues / TODO
@@ -223,6 +224,6 @@ Last session: 2026-11-11 — M7. Volume discovery (Linux: lsblk + blkid; WinPE/W
 - `rebootly-core::volume` — `Volume` model, `RecoveryKey` (`key`), `MountedDevices` letters and identity matching (`mounted`), hibernation check (`hiber`).
 - `rebootly-core::source::offline` — `OfflineVolume` (incl. other drive letters, hibernation note).
 - `rebootly-linux` — `cmd` (`Runner` trait, `System`, test `Fake`), `discover` (lsblk/blkid → volumes, mountinfo), `mount` (`Mounter`: cryptsetup/dislocker unlock, ro mounts, undo; `close_all`). Opt-in real test `tests/real_ntfs.rs`.
-- `rebootly-win::live::volumes` (cfg(windows)) — drive letters as volumes, `-FVE-FS-` lock check, `letter_identity` (live MountedDevices), `unlock` (manage-bde).
+- `rebootly-win::live::volumes` (cfg(windows)) — drive letters as volumes, lock check (`FVE_E_LOCKED_VOLUME`, then `-FVE-FS-`), `letter_identity` (live MountedDevices), `unlock` (manage-bde).
 - `rebootly-host::volumes` — `list`, `open_offline` (with drive letters), `Volumes` (unlock/mount for this run, `mount_all`, `keep`).
 - `rebootly-cli` also: `volumes.rs` (`volumes`, `open`, `close`). `rebootly-tui::backup::key` (recovery-key field).
