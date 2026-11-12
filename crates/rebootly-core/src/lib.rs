@@ -10,6 +10,7 @@ pub mod folders;
 pub mod hive;
 pub mod inspect;
 pub mod install;
+pub mod licence;
 pub mod packs;
 pub mod profiles;
 pub mod regfile;

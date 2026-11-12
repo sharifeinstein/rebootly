@@ -18,6 +18,7 @@ pub struct OfflineVolume {
     drives: Vec<(char, PathBuf)>,
     /// Offline only: hiberfil.sys holds an image to resume (Fast Startup).
     hibernated: bool,
+    licence: Option<crate::licence::WindowsLicence>,
 }
 
 impl OfflineVolume {
@@ -60,6 +61,8 @@ impl OfflineVolume {
         let vars = system_vars(&software, system).map_err(hive_err(&sw_path))?;
         let list = read_profile_list(&software, &vars).map_err(hive_err(&sw_path))?;
         let apps = machine_apps(&software).map_err(hive_err(&sw_path))?;
+        // Only feeds a checklist step: a damaged value never stops the open.
+        let licence = crate::licence::read(&software).ok().flatten();
         let drives = match system {
             Some(sys) if !mounted.is_empty() => match_letters(
                 &drive_letters(sys).unwrap_or_default(),
@@ -84,6 +87,7 @@ impl OfflineVolume {
             apps,
             drives,
             hibernated,
+            licence,
         })
     }
 
@@ -192,6 +196,9 @@ impl Source for OfflineVolume {
         &self.install.volume_root
     }
 
+    fn windows_licence(&self) -> Option<&crate::licence::WindowsLicence> {
+        self.licence.as_ref()
+    }
     fn source_notes(&self) -> Vec<String> {
         if self.hibernated {
             vec![crate::volume::HIBERNATED_NOTE.into()]

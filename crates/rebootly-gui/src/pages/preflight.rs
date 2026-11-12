@@ -150,7 +150,7 @@ impl Page for PreflightPage {
                         }
                     });
             });
-        let sens = p.plan.sensitive.len();
+        let sens = p.plan.sensitive_count();
         let needs_pass = self.sel.sensitive && sens > 0;
         if sens > 0 && !self.sel.sensitive {
             ui.label(format!(

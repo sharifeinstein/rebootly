@@ -61,12 +61,12 @@ fn keys_go_only_into_the_encrypted_bundle() {
 
     let mut saw = false;
     let m = run(&src, &p, &job, &fast(), &mut |e| {
-        saw |= matches!(e, Event::Sensitive { files: 2 })
+        saw |= matches!(e, Event::Sensitive { files: 3 })
     })
     .unwrap();
     assert!(saw && m.complete);
     let sb = m.sensitive.as_ref().unwrap();
-    assert_eq!(sb.files.len(), 2);
+    assert_eq!(sb.files.len(), 3); // + the Windows key
     assert!(sb.failed.is_empty());
     let bundle = job.dir.join(sensitive::BUNDLE_FILE);
     assert!(!job.dir.join("users/Alice/packs/dev-dotfiles/.ssh").exists());
@@ -80,16 +80,28 @@ fn keys_go_only_into_the_encrypted_bundle() {
     let mj = std::fs::read_to_string(job.dir.join("manifest.json")).unwrap();
     assert!(!mj.contains("correct horse") && mj.contains("\"sensitive\""));
     let report = std::fs::read_to_string(job.dir.join("report.txt")).unwrap();
-    assert!(report.contains("Encrypted sensitive bundle: sensitive.age (2 file(s)"));
+    assert!(report.contains("Encrypted sensitive bundle: sensitive.age (3 file(s)"));
+    // The Windows key: a checklist step with its last group, full key only
+    // in the bundle.
+    use crate::fixtures::FIXTURE_KEY;
+    assert!(report.contains("Windows licence: retail key"), "{report}");
+    assert!(report.contains("Key ending BBBNB"), "{report}");
+    assert!(!report.contains(FIXTURE_KEY) && !mj.contains(FIXTURE_KEY));
+    let html = std::fs::read_to_string(job.dir.join("report.html")).unwrap();
+    assert!(!html.contains(FIXTURE_KEY));
+    assert!(!raw.windows(5).any(|w| w == b"BBBBB"));
 
     let idx = sensitive::list(&bundle, &pass()).unwrap();
-    assert_eq!(idx.files.len(), 2);
+    assert_eq!(idx.files.len(), 3);
     let out = t.path().join("restored");
     sensitive::extract(&bundle, &pass(), &out).unwrap();
     assert_eq!(
         std::fs::read(out.join("users/Alice/packs/dev-dotfiles/.ssh/id_ed25519")).unwrap(),
         key
     );
+    let lic = std::fs::read_to_string(out.join(crate::licence::BUNDLE_PATH)).unwrap();
+    assert!(lic.contains(&format!("Key: {FIXTURE_KEY}")), "{lic}");
+    assert!(lic.contains("Edition: Professional") && lic.contains("Channel: Retail"));
 
     let wrong = Passphrase::new("not the passphrase".into()).unwrap();
     let err = sensitive::list(&bundle, &wrong).unwrap_err();
@@ -113,6 +125,16 @@ fn without_a_passphrase_keys_are_left_out_and_never_copied_plain() {
     let m = run(&src, &p, &job, &quick(), &mut |_| {}).unwrap();
     assert!(m.sensitive.is_none());
     assert!(!job.dir.join(sensitive::BUNDLE_FILE).exists());
+    let step = m
+        .manual_steps
+        .iter()
+        .find(|s| s.title.starts_with("Windows licence"))
+        .unwrap();
+    assert!(
+        step.detail.contains("choose Full (or --sensitive)"),
+        "{step:?}"
+    );
+    assert!(p.sensitive_text.is_empty());
 }
 
 #[test]

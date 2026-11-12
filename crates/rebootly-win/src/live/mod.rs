@@ -145,6 +145,9 @@ impl Source for LiveWindows {
             .into_iter()
             .collect()
     }
+    fn windows_licence(&self) -> Option<&rebootly_core::licence::WindowsLicence> {
+        self.inner.windows_licence()
+    }
     fn is_live(&self) -> bool {
         true
     }

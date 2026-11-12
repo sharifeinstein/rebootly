@@ -64,6 +64,9 @@ pub fn text(r: &InspectReport, root: &Path) -> String {
             at.display()
         );
     }
+    if let Some(l) = &r.licence {
+        let _ = writeln!(s, "Windows licence: {l}");
+    }
     for n in &r.notes {
         let _ = writeln!(s, "Note: {n}");
     }

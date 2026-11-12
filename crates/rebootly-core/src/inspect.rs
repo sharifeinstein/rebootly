@@ -27,6 +27,8 @@ pub struct InspectReport {
     pub other_drives: Vec<(char, std::path::PathBuf)>,
     /// e.g. the install was hibernated.
     pub notes: Vec<String>,
+    /// What kind of Windows licence (never the key itself).
+    pub licence: Option<String>,
 }
 
 pub fn inspect(src: &dyn Source) -> Result<InspectReport, SourceError> {
@@ -45,5 +47,6 @@ pub fn inspect(src: &dyn Source) -> Result<InspectReport, SourceError> {
         skipped: src.skipped_profiles().to_vec(),
         other_drives: src.other_drives(),
         notes: src.source_notes(),
+        licence: src.windows_licence().map(|l| l.summary()),
     })
 }

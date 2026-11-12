@@ -12,11 +12,12 @@ use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use age::secrecy::SecretString;
+use age::secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::manifest::{SensitiveEntry, SensitiveFailure, SensitiveRecord};
+use super::plan::SecretText;
 use super::time::rfc3339;
 use super::walk::PlannedFile;
 use crate::source::Source;
@@ -106,12 +107,13 @@ fn header_for(size: u64, mtime: Option<SystemTime>) -> tar::Header {
     h // the path is set by append_data, which handles long names
 }
 
-/// Write `files` into the encrypted bundle `out` (via `<out>.rbpart`, then
-/// rename). Unreadable files are recorded as failed; the bundle still gets
+/// Write `files` and `texts` into the encrypted bundle `out` (via
+/// `<out>.rbpart`, then rename). Unreadable files are recorded as failed; the bundle still gets
 /// written. `work_factor` overrides age's calibrated scrypt cost (tests).
 pub fn write_bundle(
     src: &dyn Source,
     files: &[PlannedFile],
+    texts: &[SecretText],
     out: &Path,
     pass: &Passphrase,
     work_factor: Option<u8>,
@@ -163,6 +165,22 @@ pub fn write_bundle(
                 reason: e.to_string(),
             }),
         }
+    }
+    for t in texts {
+        let data = t.text.expose_secret().as_bytes();
+        let mut h = header_for(data.len() as u64, Some(SystemTime::now()));
+        tar.append_data(&mut h, &t.dest, data)?;
+        index.files.push(BundleFile {
+            path: t.dest.clone(),
+            source: t.source.clone(),
+            size: data.len() as u64,
+            sha256: hex(&Sha256::digest(data)),
+        });
+        record.files.push(SensitiveEntry {
+            path: t.dest.clone(),
+            source: t.source.clone(),
+            size: data.len() as u64,
+        });
     }
     let idx = serde_json::to_vec_pretty(&index)?;
     let mut h = header_for(idx.len() as u64, Some(SystemTime::now()));

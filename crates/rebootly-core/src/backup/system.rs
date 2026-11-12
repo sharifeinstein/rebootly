@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use super::extras::GeneratedFile;
 use super::manifest::ManualStep;
-use super::plan::{Plan, PlanOptions};
+use super::plan::{Plan, PlanOptions, SecretText};
 use super::walk::{FolderJob, PathFilter, PlannedFile};
 use crate::apps::InstalledApp;
 use crate::packs::glob::Glob;
@@ -117,6 +117,22 @@ pub fn plan_system(
             title: "Wi-Fi networks".into(),
             detail,
         });
+    }
+
+    if let Some(l) = src.windows_licence() {
+        plan.manual_steps.push(l.manual_step(opts.sensitive_bundle));
+        let machine = src
+            .os_info()
+            .computer_name
+            .as_deref()
+            .unwrap_or("the old PC");
+        if let Some(text) = l.bundle_text(machine).filter(|_| opts.sensitive_bundle) {
+            plan.sensitive_text.push(SecretText {
+                dest: crate::licence::BUNDLE_PATH.into(),
+                source: "DigitalProductId (HKLM SOFTWARE)".into(),
+                text: text.into(),
+            });
+        }
     }
 
     let caps = src.system_captures(opts.sensitive_bundle);

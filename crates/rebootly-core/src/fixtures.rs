@@ -30,6 +30,9 @@ fn note(root: &Path, rel: &str) -> io::Result<()> {
     put(root, rel, format!("fixture file: {rel}\n").as_bytes())
 }
 
+/// The fixture install's (made-up) retail product key.
+pub const FIXTURE_KEY: &str = "BBBBB-BBBBB-BBBBB-BBBBB-BBBNB";
+
 fn software() -> HiveWriter {
     let mut w = HiveWriter::new("ROOT");
     w.key(r"Microsoft\Windows NT\CurrentVersion")
@@ -38,7 +41,21 @@ fn software() -> HiveWriter {
         .sz("EditionID", "Professional")
         .sz("CurrentBuildNumber", "26100")
         .dword("UBR", 4351)
-        .sz("SystemRoot", r"C:\WINDOWS");
+        .sz("SystemRoot", r"C:\WINDOWS")
+        // A made-up key in the retail channel (`licence` tests).
+        .set(
+            "DigitalProductId",
+            crate::hive::ValueType::Binary,
+            crate::licence::key::encode(FIXTURE_KEY),
+        )
+        .set(
+            "DigitalProductId4",
+            crate::hive::ValueType::Binary,
+            "\0\0Retail\0"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect(),
+        );
     w.key(r"Microsoft\Windows\CurrentVersion")
         .sz("ProgramFilesDir", r"C:\Program Files")
         .sz("ProgramFilesDir (x86)", r"C:\Program Files (x86)");

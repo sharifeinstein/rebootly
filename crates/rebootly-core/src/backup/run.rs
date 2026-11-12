@@ -163,7 +163,7 @@ pub fn run(
     opts: &RunOptions,
     progress: &mut dyn FnMut(Event<'_>),
 ) -> std::io::Result<Manifest> {
-    let pass = match (&opts.passphrase, plan.sensitive.is_empty()) {
+    let pass = match (&opts.passphrase, plan.sensitive_count() == 0) {
         (Some(p), false) => Some(p),
         (None, false) => {
             return Err(std::io::Error::new(
@@ -260,12 +260,13 @@ pub fn run(
     let sensitive = match pass.filter(|_| complete) {
         Some(p) => {
             progress(Event::Sensitive {
-                files: plan.sensitive.len(),
+                files: plan.sensitive_count(),
             });
             let out = job.dir.join(BUNDLE_FILE);
             Some(write_bundle(
                 src,
                 &plan.sensitive,
+                &plan.sensitive_text,
                 &out,
                 p,
                 opts.bundle_work_factor,

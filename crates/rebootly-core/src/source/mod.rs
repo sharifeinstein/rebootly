@@ -127,6 +127,11 @@ pub trait Source: Send + Sync {
     fn source_notes(&self) -> Vec<String> {
         Vec::new()
     }
+    /// The Windows licence (key and channel) from the SOFTWARE hive.
+    /// Default: none.
+    fn windows_licence(&self) -> Option<&crate::licence::WindowsLicence> {
+        None
+    }
     /// The source's other drive letters that are read from here (offline:
     /// matched through `MountedDevices`). Default: none.
     fn other_drives(&self) -> Vec<(char, PathBuf)> {

@@ -89,6 +89,25 @@ pub struct Plan {
     pub sensitive_jobs: Vec<FolderJob>,
     /// Files for the encrypted bundle (`dest` = path inside the bundle).
     pub sensitive: Vec<PlannedFile>,
+    /// Text Rebootly writes into the encrypted bundle (the Windows key).
+    pub sensitive_text: Vec<SecretText>,
+}
+
+/// Generated text for the encrypted bundle only; Debug is redacted.
+#[derive(Debug)]
+pub struct SecretText {
+    /// Path inside the bundle.
+    pub dest: String,
+    /// What it was made from (shown in the bundle index).
+    pub source: String,
+    pub text: age::secrecy::SecretString,
+}
+
+impl Plan {
+    /// Items for the encrypted bundle: files and generated text.
+    pub fn sensitive_count(&self) -> usize {
+        self.sensitive.len() + self.sensitive_text.len()
+    }
 }
 
 fn wanted(list: &[String], candidates: &[&str]) -> bool {

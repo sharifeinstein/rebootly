@@ -112,11 +112,11 @@ impl PreflightScreen {
                 dim(),
             ));
         }
-        if !plan.sensitive.is_empty() {
+        if plan.sensitive_count() > 0 {
             let msg = if self.sel.sensitive {
                 format!(
                     "{} key/credential file(s) go into the encrypted sensitive.age",
-                    plan.sensitive.len()
+                    plan.sensitive_count()
                 )
             } else {
                 format!(

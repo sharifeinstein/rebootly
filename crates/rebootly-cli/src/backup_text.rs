@@ -47,10 +47,10 @@ pub fn print_detected(plan: &backup::Plan) {
             eprintln!("  {u:<20} {}", ids.join(", "));
         }
     }
-    if !plan.sensitive.is_empty() {
+    if plan.sensitive_count() > 0 {
         eprintln!(
             "Sensitive: {} file(s) (keys, credentials) go into the encrypted sensitive.age",
-            plan.sensitive.len()
+            plan.sensitive_count()
         );
     } else if !plan.sensitive_jobs.is_empty() {
         eprintln!(

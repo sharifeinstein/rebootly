@@ -205,7 +205,7 @@ pub fn run(a: BackupArgs) -> anyhow::Result<u8> {
         );
     }
 
-    let passphrase = (sensitive && !plan.sensitive.is_empty())
+    let passphrase = (sensitive && plan.sensitive_count() > 0)
         .then(|| crate::sensitive::passphrase(a.passphrase_file.as_deref(), true))
         .transpose()?;
     let job = match resumed {
