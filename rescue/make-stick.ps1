@@ -43,7 +43,8 @@ Set-Location $repo
 
 function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Copy-To($src, $dir, $name = "") {
-    New-Item -ItemType Directory -Force $dir | Out-Null
+    # Not New-Item -Force on a drive root (E:\): Windows PowerShell rejects it.
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory $dir | Out-Null }
     if ($name) { Copy-Item $src (Join-Path $dir $name) -Force } else { Copy-Item $src $dir -Force }
 }
 
