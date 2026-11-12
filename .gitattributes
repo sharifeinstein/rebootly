@@ -5,3 +5,6 @@
 *.ps1 text eol=crlf
 *.sh  text eol=lf
 rescue/alpine/rebootly-start text eol=lf
+
+# Test fixtures are compared byte for byte with the generator: never convert them.
+tests/fixtures/** -text
