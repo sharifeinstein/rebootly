@@ -69,14 +69,21 @@ $hostArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd
 $dism = Join-Path $adk "Deployment Tools\$hostArch\DISM\dism.exe"
 if (-not (Test-Path $dism)) { $dism = "dism.exe" }
 
+# Windows PowerShell 5.1 turns a native tool's stderr (progress lines) into an
+# error record when output is redirected, and "Stop" then aborts the script.
+# Native tools report failure by exit code, so run them under "Continue".
+function Invoke-Native([string]$What, [scriptblock]$Run) {
+    $ErrorActionPreference = "Continue"
+    & $Run
+    if ($LASTEXITCODE -ne 0) { throw "$What failed (exit code $LASTEXITCODE)" }
+}
 function Invoke-Dism([string[]]$a) {
-    & $dism /English @a
-    if ($LASTEXITCODE -ne 0) { throw "dism $($a -join ' ') failed (exit code $LASTEXITCODE)" }
+    Invoke-Native "dism $($a -join ' ')" { & $dism /English @a }
 }
 # copype and MakeWinPEMedia need the ADK's environment (paths to oscdimg etc.).
+# oscdimg prints its progress on stderr: merge it into stdout inside cmd.
 function AdkCmd([string]$line) {
-    cmd /c "call `"$dandi`" >nul && $line"
-    if ($LASTEXITCODE -ne 0) { throw "$line failed (exit code $LASTEXITCODE)" }
+    Invoke-Native $line { cmd /c "call `"$dandi`" >nul && $line 2>&1" }
 }
 
 $mount = Join-Path $WorkDir "mount"

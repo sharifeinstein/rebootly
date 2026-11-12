@@ -25,6 +25,14 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
+# Windows PowerShell 5.1 turns a native tool's stderr (progress lines) into an
+# error record when output is redirected, and "Stop" then aborts the script.
+# Native tools report failure by exit code, so run them under "Continue".
+function Invoke-Native([string]$What, [scriptblock]$Run) {
+    $ErrorActionPreference = "Continue"
+    & $Run
+    if ($LASTEXITCODE -ne 0) { throw "$What failed (exit code $LASTEXITCODE)" }
+}
 
 $m = Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
 if (-not $m) { throw "version not found in Cargo.toml" }
@@ -36,8 +44,7 @@ if (git status --porcelain) {
 
 if (-not $SkipTests) {
     Step "cargo test"
-    cargo test
-    if ($LASTEXITCODE -ne 0) { throw "tests failed" }
+    Invoke-Native "cargo test" { cargo test }
 }
 
 if ($DonateUrl) {
@@ -48,8 +55,7 @@ if ($DonateUrl) {
 }
 # The link is compiled in; cargo rebuilds what reads it when it changes.
 Step "cargo build --release"
-cargo build --release -p rebootly-gui -p rebootly-cli
-if ($LASTEXITCODE -ne 0) { throw "build failed" }
+Invoke-Native "cargo build" { cargo build --release -p rebootly-gui -p rebootly-cli }
 Remove-Item Env:REBOOTLY_DONATE_URL -ErrorAction SilentlyContinue
 
 $name = "Rebootly-$version-windows-x64"
@@ -81,7 +87,7 @@ Compress-Archive -Path (Join-Path $stick "*") -DestinationPath $stickZip
 $stickHash = (Get-FileHash $stickZip -Algorithm SHA256).Hash.ToLower()
 "$stickHash  $stickName.zip" | Set-Content (Join-Path "dist" "$stickName.zip.sha256") -Encoding ascii
 
-& (Join-Path $dist "rebootly-cli.exe") --version
+Invoke-Native "rebootly-cli --version" { & (Join-Path $dist "rebootly-cli.exe") --version }
 Write-Host ""
 Write-Host "Built $zip" -ForegroundColor Green
 Write-Host "SHA-256 $hash"
