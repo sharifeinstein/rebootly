@@ -87,7 +87,7 @@ Implementation (M7): volumes are listed by the platform layer (`rebootly-core::v
 - **Failing-disk tolerance:** retry a read N times with backoff, then log and continue. Never abort the whole job over one file. If SMART data looks bad (when readable), suggest imaging with `ddrescue` first.
 - **Resumable:** the job state file on the target lets the copy resume after a NAS dropout or cancel. Pause and resume are supported.
 - Parallel, bounded I/O. A SHA-256 hash per file goes into the manifest (computed while streaming).
-- **Pre-flight:** size per category, target free space, **FAT32 4 GB limit detection** (warn, suggest exFAT/NTFS), path-length and invalid-character checks for SMB/Linux targets, case-collision check for case-sensitive NAS. The target's filesystem type comes from /proc/self/mountinfo on Linux and `GetVolumeInformationW` on Windows.
+- **Pre-flight:** size per category, target free space, **FAT32 4 GB limit detection** (warn, suggest exFAT/NTFS), path-length and invalid-character checks for SMB/Linux targets, case-collision check for case-sensitive NAS. Live: a warning naming other users still signed in (WTS sessions other than Rebootly's own; their running apps keep files locked). The target's filesystem type comes from /proc/self/mountinfo on Linux and `GetVolumeInformationW` on Windows.
 - Live mode: prevent sleep during the job (`SetThreadExecutionState`). Warn if a laptop is on battery.
 
 ### 3.6 Exclusions (always)
@@ -266,6 +266,7 @@ Tool version, schema version, job ID, timestamps, `complete` flag; source machin
 ├─ streams/<dest>/<stream-name>    # alternate data streams (live)
 └─ sensitive.age                    # encrypted bundle
 ```
+In `report.txt`/`report.html`, 5 or more failed files with the same report row (`users/<u>/<kind>/<name>`, `system/<item>`) and the same reason are one line (their deepest common source folder + count); "Access is denied" (os error 5) and "in use" (32/33) failures add a plain-language hint.
 
 ---
 

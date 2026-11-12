@@ -15,6 +15,7 @@ mod knownfolder;
 mod power;
 mod regsave;
 mod restore;
+mod sessions;
 mod streams;
 mod token;
 mod volume;
@@ -137,6 +138,12 @@ impl Source for LiveWindows {
         which: HiveRef<'_>,
     ) -> Result<Option<PathBuf>, SourceError> {
         self.inner.hive_snapshot(file, which)
+    }
+    /// Other signed-in users keep apps (and their files) open.
+    fn source_notes(&self) -> Vec<String> {
+        crate::sessions::note(&sessions::others())
+            .into_iter()
+            .collect()
     }
     fn is_live(&self) -> bool {
         true

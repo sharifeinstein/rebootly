@@ -17,6 +17,8 @@ mod bitlocker;
 mod live;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod parse;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod sessions;
 
 #[cfg(windows)]
 pub use live::clipboard::clipboard_text;
