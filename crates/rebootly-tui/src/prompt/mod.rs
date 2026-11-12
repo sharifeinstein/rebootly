@@ -95,7 +95,12 @@ fn run(mut line: impl LineEdit, intro: &str) -> io::Result<Option<String>> {
     terminal::enable_raw_mode()?;
     let _raw = Raw;
     let show = |err: &mut io::Stderr, text: &str| -> io::Result<()> {
-        queue!(err, MoveToColumn(0), Clear(ClearType::CurrentLine), Print(text))?;
+        queue!(
+            err,
+            MoveToColumn(0),
+            Clear(ClearType::CurrentLine),
+            Print(text)
+        )?;
         err.flush()
     };
     show(&mut err, &line.render())?;

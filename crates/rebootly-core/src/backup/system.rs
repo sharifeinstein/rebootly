@@ -100,17 +100,22 @@ pub fn plan_system(
     }
     let wifi = format!(r"{pd}\Microsoft\Wlansvc\Profiles\Interfaces");
     if let Some(p) = local_dir(src, &wifi) {
+        let names = wifi_names(&p);
         plan.sensitive_jobs.push(job(wifi, p, "system/wifi", None));
-        let detail = if opts.sensitive_bundle {
+        let how = if opts.sensitive_bundle {
             "Wi-Fi profiles are in sensitive.age. Saved Wi-Fi passwords are protected by this \
              PC's Windows and can't be moved from an offline backup: have them at hand."
         } else {
             "Wi-Fi profiles were not copied (they're only stored encrypted; use --sensitive). \
              Have your Wi-Fi passwords at hand for the new PC."
         };
+        let detail = match names_line(&names) {
+            Some(line) => format!("{line} {how}"),
+            None => how.to_owned(),
+        };
         plan.manual_steps.push(ManualStep {
             title: "Wi-Fi networks".into(),
-            detail: detail.into(),
+            detail,
         });
     }
 
@@ -150,5 +155,75 @@ pub fn plan_system(
             bytes,
             source: "Uninstall keys (HKLM SOFTWARE)".into(),
         });
+    }
+}
+
+/// Names of the saved Wi-Fi networks (`Interfaces\{GUID}\{GUID}.xml`), sorted,
+/// without duplicates. The name is plain text in the profile; only the key is
+/// protected. Unreadable files are skipped.
+pub fn wifi_names(interfaces: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(interfaces)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|i| std::fs::read_dir(i.path()).ok())
+        .flatten()
+        .flatten()
+        .filter(|f| {
+            f.path()
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("xml"))
+        })
+        .filter_map(|f| std::fs::read(f.path()).ok())
+        .filter_map(|x| crate::restore::system::wifi_name(&x))
+        .collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    names
+}
+
+/// "Saved networks: A, B and C." for the checklist (at most 20 names).
+fn names_line(names: &[String]) -> Option<String> {
+    const MAX: usize = 20;
+    let (shown, rest) = names.split_at(names.len().min(MAX));
+    let mut line = match shown {
+        [] => return None,
+        [one] => one.clone(),
+        [init @ .., last] if rest.is_empty() => format!("{} and {last}", init.join(", ")),
+        all => all.join(", "),
+    };
+    if !rest.is_empty() {
+        line.push_str(&format!(" and {} more", rest.len()));
+    }
+    let what = if names.len() == 1 {
+        "network"
+    } else {
+        "networks"
+    };
+    Some(format!("Saved Wi-Fi {what}: {line}."))
+}
+
+#[cfg(test)]
+mod names_tests {
+    use super::names_line;
+
+    fn v(n: &[&str]) -> Vec<String> {
+        n.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn lists_read_naturally() {
+        assert_eq!(names_line(&[]), None);
+        assert_eq!(
+            names_line(&v(&["Home"])).unwrap(),
+            "Saved Wi-Fi network: Home."
+        );
+        assert_eq!(
+            names_line(&v(&["A", "B", "C"])).unwrap(),
+            "Saved Wi-Fi networks: A, B and C."
+        );
+        let many: Vec<String> = (0..23).map(|i| format!("N{i}")).collect();
+        let l = names_line(&many).unwrap();
+        assert!(l.ends_with("N19 and 3 more."), "{l}");
     }
 }

@@ -15,9 +15,11 @@ const LSBLK: &str = r#"{"blockdevices": [
 
 fn listed(json: &str) -> Vec<Volume> {
     let rows = parse(json).unwrap();
-    volumes(&rows, |m| m != "/media/me/Data", |k| {
-        (k == "/dev/sdb1").then_some(2048)
-    })
+    volumes(
+        &rows,
+        |m| m != "/media/me/Data",
+        |k| (k == "/dev/sdb1").then_some(2048),
+    )
 }
 
 #[test]
@@ -27,7 +29,10 @@ fn lists_windows_filesystems_with_state_and_identity() {
     assert_eq!(devs, ["/dev/nvme0n1p3", "/dev/nvme0n1p4", "/dev/sdb1"]);
 
     assert_eq!(v[0].state, VolumeState::Locked);
-    assert_eq!(v[0].id, Some(VolumeId::gpt("11111111-2222-3333-4444-555555555555")));
+    assert_eq!(
+        v[0].id,
+        Some(VolumeId::gpt("11111111-2222-3333-4444-555555555555"))
+    );
 
     assert_eq!(
         v[1].state,
@@ -36,7 +41,10 @@ fn lists_windows_filesystems_with_state_and_identity() {
             read_only: false
         }
     );
-    assert_eq!(v[1].id, Some(VolumeId::gpt("66666666-7777-8888-9999-aaaaaaaaaaaa")));
+    assert_eq!(
+        v[1].id,
+        Some(VolumeId::gpt("66666666-7777-8888-9999-aaaaaaaaaaaa"))
+    );
 
     assert_eq!(v[2].state, VolumeState::Unmounted);
     assert!(v[2].removable);
@@ -92,7 +100,10 @@ fn real_lsblk_output_parses() {
     let out = crate::cmd::Runner::run(&run, "lsblk", LSBLK_ARGS, None).unwrap();
     if out.ok() {
         let rows = parse(&out.stdout).unwrap();
-        assert!(rows.iter().all(|r| !r.name.is_empty() && !r.kind.is_empty()));
+        assert!(
+            rows.iter()
+                .all(|r| !r.name.is_empty() && !r.kind.is_empty())
+        );
     }
 }
 

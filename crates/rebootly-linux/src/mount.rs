@@ -14,8 +14,8 @@ use std::sync::Mutex;
 
 use rebootly_core::volume::{Unlock, Volume, VolumeState};
 
-use crate::cmd::{Runner, last_line};
 pub use crate::close::{close_all, close_all_in};
+use crate::cmd::{Runner, last_line};
 
 /// Where Rebootly mounts volumes (a tmpfs, never on a source disk).
 pub const BASE: &str = "/run/rebootly";

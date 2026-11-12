@@ -103,8 +103,11 @@ impl Screen for TargetScreen {
         }
         if let Some(e) = &self.error {
             f.render_widget(
-                Paragraph::new(Line::styled(e.clone(), ratatui::style::Style::default().fg(BAD)))
-                    .wrap(Wrap { trim: true }),
+                Paragraph::new(Line::styled(
+                    e.clone(),
+                    ratatui::style::Style::default().fg(BAD),
+                ))
+                .wrap(Wrap { trim: true }),
                 foot,
             );
         }

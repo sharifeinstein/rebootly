@@ -130,7 +130,9 @@ mod tests {
         assert_eq!(l.key(&ctrl_v), Step::Paste);
         assert_eq!(l.key(&shift_ins), Step::Paste);
         typed(&mut l, "999");
-        l.paste(Some(&format!("Key ID: 1A2B3C4D  Recovery key: {KEY}  11/11/2026")));
+        l.paste(Some(&format!(
+            "Key ID: 1A2B3C4D  Recovery key: {KEY}  11/11/2026"
+        )));
         assert_eq!(l.render(), format!("Key: {KEY}  48/48"));
         assert_eq!(l.key(&press(KeyCode::Enter)), Step::Done(KEY.into()));
 

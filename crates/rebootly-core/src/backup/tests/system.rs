@@ -21,7 +21,24 @@ fn add_system_files(root: &Path) {
     std::fs::write(pbk.join("rasphone.pbk"), b"[Office VPN]\r\n").unwrap();
     let wifi = root.join("ProgramData/Microsoft/Wlansvc/Profiles/Interfaces/{1234}");
     std::fs::create_dir_all(&wifi).unwrap();
-    std::fs::write(wifi.join("{abcd}.xml"), b"<WLANProfile/>").unwrap();
+    std::fs::write(
+        wifi.join("{abcd}.xml"),
+        b"<?xml version=\"1.0\"?><WLANProfile><name>Home &amp; Garden</name>\
+          <SSIDConfig><SSID><name>Home &amp; Garden</name></SSID></SSIDConfig></WLANProfile>",
+    )
+    .unwrap();
+    let wifi2 = root.join("ProgramData/Microsoft/Wlansvc/Profiles/Interfaces/{5678}");
+    std::fs::create_dir_all(&wifi2).unwrap();
+    std::fs::write(
+        wifi2.join("{ef01}.xml"),
+        b"<WLANProfile><name>cafe</name></WLANProfile>",
+    )
+    .unwrap();
+    std::fs::write(
+        wifi2.join("{ef02}.xml"),
+        b"<WLANProfile><name>Home &amp; Garden</name></WLANProfile>",
+    )
+    .unwrap();
 }
 
 #[test]
@@ -50,7 +67,17 @@ fn system_items_planned_and_wifi_only_encrypted() {
             .iter()
             .any(|f| f.dest.contains("wifi") || f.dest.contains("Wlansvc"))
     );
-    assert!(p.manual_steps.iter().any(|s| s.title == "Wi-Fi networks"));
+    let step = p
+        .manual_steps
+        .iter()
+        .find(|s| s.title == "Wi-Fi networks")
+        .unwrap();
+    assert!(
+        step.detail
+            .starts_with("Saved Wi-Fi networks: cafe and Home & Garden. "),
+        "{}",
+        step.detail
+    );
     assert!(p.generated.iter().any(|g| g.dest == "system/apps.json"));
 
     let o = PlanOptions {

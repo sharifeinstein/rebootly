@@ -262,9 +262,11 @@ pub fn wifi_name(xml: &[u8]) -> Option<String> {
     let end = s[start..].find("</name>")? + start;
     let n = s[start..end].trim();
     (!n.is_empty()).then(|| {
-        n.replace("&amp;", "&")
-            .replace("&lt;", "<")
+        n.replace("&lt;", "<")
             .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&")
     })
 }
 

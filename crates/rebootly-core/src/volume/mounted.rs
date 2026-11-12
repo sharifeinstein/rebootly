@@ -56,10 +56,7 @@ pub fn guid_string(b: &[u8]) -> String {
     let d2 = u16::from_le_bytes([b[4], b[5]]);
     let d3 = u16::from_le_bytes([b[6], b[7]]);
     let tail: String = b[10..16].iter().map(|x| format!("{x:02x}")).collect();
-    format!(
-        "{d1:08x}-{d2:04x}-{d3:04x}-{:02x}{:02x}-{tail}",
-        b[8], b[9]
-    )
+    format!("{d1:08x}-{d2:04x}-{d3:04x}-{:02x}{:02x}-{tail}", b[8], b[9])
 }
 
 /// Canonical GUID text → Windows bytes (inverse of [`guid_string`]).

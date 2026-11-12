@@ -20,7 +20,12 @@ pub fn close_all(run: &dyn Runner) -> Vec<String> {
     close_all_in(run, Path::new(BASE), &info, &mapper)
 }
 
-pub fn close_all_in(run: &dyn Runner, base: &Path, mountinfo: &str, mapper: &[String]) -> Vec<String> {
+pub fn close_all_in(
+    run: &dyn Runner,
+    base: &Path,
+    mountinfo: &str,
+    mapper: &[String],
+) -> Vec<String> {
     let mut errs = Vec::new();
     let mut mounts: Vec<String> = mountinfo
         .lines()

@@ -70,8 +70,5 @@ pub fn draw_key(f: &mut Frame, area: Rect, k: &KeyEntry) {
     } else {
         key_status(&k.field.value)
     };
-    f.render_widget(
-        Paragraph::new(Line::styled(status, dim())),
-        count,
-    );
+    f.render_widget(Paragraph::new(Line::styled(status, dim())), count);
 }

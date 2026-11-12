@@ -63,11 +63,7 @@ impl Platform for Fake {
             removable: true,
         }]
     }
-    fn open_volume(
-        &self,
-        _: &str,
-        key: Option<&Unlock>,
-    ) -> anyhow::Result<(PathBuf, Vec<String>)> {
+    fn open_volume(&self, _: &str, key: Option<&Unlock>) -> anyhow::Result<(PathBuf, Vec<String>)> {
         if !matches!(key.map(Unlock::expose), Some(KEY | PASSWORD)) {
             anyhow::bail!("E: wasn't unlocked; check the recovery key");
         }
@@ -283,7 +279,8 @@ fn locked_disk_unlocks_with_the_recovery_key() {
     g.h.get_by_role_and_label(field(), "Recovery key").click();
     g.h.step();
     for part in [&plain[..10], &plain[10..47]] {
-        g.h.get_by_role_and_label(field(), "Recovery key").type_text(part);
+        g.h.get_by_role_and_label(field(), "Recovery key")
+            .type_text(part);
         g.h.step();
     }
     g.wait("47 of 48 digits");
@@ -293,13 +290,18 @@ fn locked_disk_unlocks_with_the_recovery_key() {
     g.h.step();
     g.h.key_press(eframe::egui::Key::End);
     g.h.step();
-    g.h.get_by_role_and_label(field(), "Recovery key").type_text(&plain[47..]);
+    g.h.get_by_role_and_label(field(), "Recovery key")
+        .type_text(&plain[47..]);
     g.h.step();
     g.wait("48 of 48 digits");
     g.click("Unlock");
     g.wait("It was hibernated.");
     g.wait("Windows on");
-    assert!(g.h.query_all_by_label_contains("Unlock E:").next().is_none());
+    assert!(
+        g.h.query_all_by_label_contains("Unlock E:")
+            .next()
+            .is_none()
+    );
     g.click("Next"); // the unlocked install is picked
     g.wait("Alice");
 }
@@ -315,10 +317,15 @@ fn locked_disk_unlocks_with_its_password() {
     let field = || eframe::egui::Role::PasswordInput;
     g.h.get_by_role_and_label(field(), "Password").click();
     g.h.step();
-    g.h.get_by_role_and_label(field(), "Password").type_text(PASSWORD);
+    g.h.get_by_role_and_label(field(), "Password")
+        .type_text(PASSWORD);
     g.h.step();
     g.wait("12 characters");
     g.click("Unlock");
     g.wait("Windows on");
-    assert!(g.h.query_all_by_label_contains("Unlock E:").next().is_none());
+    assert!(
+        g.h.query_all_by_label_contains("Unlock E:")
+            .next()
+            .is_none()
+    );
 }

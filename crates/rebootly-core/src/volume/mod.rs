@@ -12,8 +12,8 @@ pub use key::{
     KeyError, RecoveryKey, find_key, grouped as grouped_key, pasted_digits as pasted_key_digits,
     progress as key_progress, tidy as tidy_key, typing_status as key_status,
 };
-pub use unlock::{Password, PasswordError, Unlock};
 pub use mounted::{MountedVolume, VolumeId, drive_letters, match_letters};
+pub use unlock::{Password, PasswordError, Unlock};
 
 use std::path::PathBuf;
 
@@ -157,7 +157,10 @@ mod drive_map_tests {
                 .find(|p| p.username == "bob")
                 .unwrap();
             let f = src.resolve_folders(&bob).unwrap();
-            f.into_iter().find(|f| f.path.name == "Pictures").unwrap().local
+            f.into_iter()
+                .find(|f| f.path.name == "Pictures")
+                .unwrap()
+                .local
         };
 
         let plain = OfflineVolume::open(c.path()).unwrap();
@@ -185,7 +188,11 @@ mod drive_map_tests {
         std::fs::create_dir_all(&target).unwrap();
         let pre = crate::backup::preflight(&plan, &target, None, None);
         assert!(pre.warnings.iter().any(|w| w == HIBERNATED_NOTE));
-        assert!(pre.warnings.iter().any(|w| w.starts_with("the target is on D:")));
+        assert!(
+            pre.warnings
+                .iter()
+                .any(|w| w.starts_with("the target is on D:"))
+        );
         assert!(pre.blockers.is_empty(), "{:?}", pre.blockers);
     }
 }

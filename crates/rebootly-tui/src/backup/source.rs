@@ -306,7 +306,6 @@ impl Screen for SourceScreen {
     }
 }
 
-
 /// Ctrl+V or Shift+Insert.
 fn is_paste(k: &KeyEvent) -> bool {
     match k.code {

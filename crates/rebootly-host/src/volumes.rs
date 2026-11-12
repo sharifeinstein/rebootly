@@ -68,7 +68,9 @@ impl Volumes {
         let v = vols
             .iter()
             .find(|v| v.device.eq_ignore_ascii_case(device))
-            .ok_or_else(|| anyhow::anyhow!("{device}: no such volume (see `rebootly-cli volumes`)"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("{device}: no such volume (see `rebootly-cli volumes`)")
+            })?;
         #[cfg(windows)]
         {
             if v.is_locked() {
@@ -94,7 +96,9 @@ impl Volumes {
         #[cfg(not(windows))]
         for v in list().iter().filter(|v| {
             v.state == rebootly_core::volume::VolumeState::Unmounted
-                && v.fs.as_deref().is_some_and(|f| f.eq_ignore_ascii_case("ntfs"))
+                && v.fs
+                    .as_deref()
+                    .is_some_and(|f| f.eq_ignore_ascii_case("ntfs"))
         }) {
             match self.mounter.open(v, None) {
                 Ok(m) => notes.extend(with_hibernation(m.root, m.notes).1),
@@ -145,7 +149,11 @@ impl Volumes {
             if unlocked_bitlocker(&v.device) {
                 anyhow::bail!("{device} is a BitLocker drive; backups go to an unencrypted drive");
             }
-            if let VolumeState::Mounted { root, read_only: true } = &v.state {
+            if let VolumeState::Mounted {
+                root,
+                read_only: true,
+            } = &v.state
+            {
                 if root.starts_with(rebootly_linux::BASE) {
                     if rebootly_core::install::WindowsInstall::from_path(root).is_some() {
                         anyhow::bail!(
@@ -193,8 +201,12 @@ fn unlocked_bitlocker(device: &str) -> bool {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    Path::new("/dev/mapper").join(format!("rebootly-{s}")).exists()
-        || Path::new(rebootly_linux::BASE).join(format!("fve-{s}")).exists()
+    Path::new("/dev/mapper")
+        .join(format!("rebootly-{s}"))
+        .exists()
+        || Path::new(rebootly_linux::BASE)
+            .join(format!("fve-{s}"))
+            .exists()
 }
 
 fn with_hibernation(root: PathBuf, mut notes: Vec<String>) -> (PathBuf, Vec<String>) {

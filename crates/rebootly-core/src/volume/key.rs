@@ -22,14 +22,20 @@ pub enum KeyError {
 }
 
 fn group_ok(g: &str) -> bool {
-    g.parse::<u32>().is_ok_and(|n| n % 11 == 0 && n / 11 < 65_536)
+    g.parse::<u32>()
+        .is_ok_and(|n| n % 11 == 0 && n / 11 < 65_536)
 }
 
 /// A key as it's being typed, shown back: its digits in groups of 6
 /// (`123456-234567-12`), at most 48; anything but digits is dropped.
 pub fn grouped(input: &str) -> String {
     let mut out = String::with_capacity(55);
-    for (i, c) in input.chars().filter(char::is_ascii_digit).take(48).enumerate() {
+    for (i, c) in input
+        .chars()
+        .filter(char::is_ascii_digit)
+        .take(48)
+        .enumerate()
+    {
         if i > 0 && i % 6 == 0 {
             out.push('-');
         }
@@ -75,8 +81,10 @@ pub fn pasted_digits(text: &str) -> Option<String> {
         return Some(k.replace('-', ""));
     }
     let t = text.trim();
-    (!t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | ' ')))
-        .then(|| t.chars().filter(char::is_ascii_digit).collect())
+    (!t.is_empty()
+        && t.chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '-' | ' ')))
+    .then(|| t.chars().filter(char::is_ascii_digit).collect())
 }
 
 /// What a key field shows after an edit or a paste: a whole key found in

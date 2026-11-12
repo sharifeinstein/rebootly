@@ -111,12 +111,10 @@ pub mod fake {
 
     impl Fake {
         pub fn expect(&self, prefix: &str, code: i32, stdout: &str, stderr: &str) -> &Self {
-            self.script.lock().unwrap().push((
-                prefix.into(),
-                code,
-                stdout.into(),
-                stderr.into(),
-            ));
+            self.script
+                .lock()
+                .unwrap()
+                .push((prefix.into(), code, stdout.into(), stderr.into()));
             self
         }
 
@@ -126,12 +124,7 @@ pub mod fake {
     }
 
     impl Runner for Fake {
-        fn run(
-            &self,
-            prog: &str,
-            args: &[&str],
-            stdin: Option<&[u8]>,
-        ) -> std::io::Result<Output> {
+        fn run(&self, prog: &str, args: &[&str], stdin: Option<&[u8]>) -> std::io::Result<Output> {
             let call = Call {
                 prog: prog.into(),
                 args: args.iter().map(|s| s.to_string()).collect(),

@@ -80,12 +80,18 @@ mod tests {
         for c in "Sommer 2026".chars() {
             l.key(&press(KeyCode::Char(c)));
         }
-        assert_eq!(l.render(), format!("Password: {}  11 characters", "•".repeat(11)));
+        assert_eq!(
+            l.render(),
+            format!("Password: {}  11 characters", "•".repeat(11))
+        );
         assert!(!l.render().contains("Sommer"));
         l.paste(Some("!\r\nsecond line"));
         l.key(&press(KeyCode::Backspace));
         l.paste(Some("!"));
-        assert_eq!(l.key(&press(KeyCode::Enter)), Step::Done("Sommer 2026!".into()));
+        assert_eq!(
+            l.key(&press(KeyCode::Enter)),
+            Step::Done("Sommer 2026!".into())
+        );
         assert_eq!(l.entered(), "Password: entered");
     }
 

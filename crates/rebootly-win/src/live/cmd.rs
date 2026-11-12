@@ -16,7 +16,11 @@ pub fn run_cmd(cmd: &mut Command) -> Result<Vec<u8>, String> {
 /// [`run_cmd`] with `input` written to stdin (secrets: never on a command
 /// line).
 pub fn run_with_input(cmd: &mut Command, input: Option<&[u8]>) -> Result<Vec<u8>, String> {
-    let stdin = if input.is_some() { Stdio::piped() } else { Stdio::null() };
+    let stdin = if input.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    };
     let mut child = cmd
         .stdin(stdin)
         .stdout(Stdio::piped())

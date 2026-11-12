@@ -19,11 +19,11 @@ mod live;
 mod parse;
 
 #[cfg(windows)]
+pub use live::clipboard::clipboard_text;
+#[cfg(windows)]
+pub use live::volumes::{letter_identity, unlock as unlock_bitlocker, volumes};
+#[cfg(windows)]
 pub use live::{
     LiveError, LiveWindows, SleepGuard, WinRestoreHost, filesystem_type, is_elevated, live_target,
     on_battery,
 };
-#[cfg(windows)]
-pub use live::clipboard::clipboard_text;
-#[cfg(windows)]
-pub use live::volumes::{letter_identity, unlock as unlock_bitlocker, volumes};

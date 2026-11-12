@@ -110,11 +110,10 @@ mod tests {
         assert_eq!(p.what(), "password");
         assert_eq!(p.expose(), "hunter2!");
         assert_eq!(format!("{p:?}"), "Password(Password(…))");
-        let k: Unlock = RecoveryKey::parse(
-            "000000-000011-123453-720885-111111-222222-333333-444444",
-        )
-        .unwrap()
-        .into();
+        let k: Unlock =
+            RecoveryKey::parse("000000-000011-123453-720885-111111-222222-333333-444444")
+                .unwrap()
+                .into();
         assert_eq!(k.what(), "recovery key");
         assert!(!format!("{k:?}").contains("123453"));
     }

@@ -28,10 +28,15 @@ fn discover_mount_read_release() {
     // Read-only for real: writing must fail.
     assert!(std::fs::write(got.root.join("x.txt"), b"x").is_err());
     let src = OfflineVolume::open(&got.root).unwrap();
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/win11-basic");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/win11-basic");
     let want = OfflineVolume::open(&fixture).unwrap().profiles().unwrap();
-    let got_users: Vec<String> = src.profiles().unwrap().into_iter().map(|p| p.username).collect();
+    let got_users: Vec<String> = src
+        .profiles()
+        .unwrap()
+        .into_iter()
+        .map(|p| p.username)
+        .collect();
     let want_users: Vec<String> = want.into_iter().map(|p| p.username).collect();
     assert_eq!(got_users, want_users);
     assert_eq!(src.source_notes(), vec![HIBERNATED_NOTE.to_string()]);
@@ -40,7 +45,13 @@ fn discover_mount_read_release() {
     let after = discover(&System).unwrap();
     let mounted = after.iter().find(|v| v.device == dev).unwrap();
     assert!(
-        matches!(mounted.state, VolumeState::Mounted { read_only: true, .. }),
+        matches!(
+            mounted.state,
+            VolumeState::Mounted {
+                read_only: true,
+                ..
+            }
+        ),
         "{mounted:?}"
     );
     assert_eq!(m.release(), Vec::<String>::new());

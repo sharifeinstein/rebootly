@@ -77,7 +77,10 @@ impl Platform for Fake {
             anyhow::bail!("the recovery key doesn't unlock this disk");
         }
         *self.unlocked.lock().unwrap() = true;
-        Ok((fixture(), vec!["Windows on this disk wasn't fully shut down.".into()]))
+        Ok((
+            fixture(),
+            vec!["Windows on this disk wasn't fully shut down.".into()],
+        ))
     }
     fn prepare_rescue(&self) -> Vec<String> {
         *self.prepared.lock().unwrap() = true;
@@ -167,7 +170,10 @@ fn locked_disk_is_listed_and_unlocks_with_the_key() {
     assert!(s.contains("Windows on"), "{s}");
     assert!(s.contains("wasn't fully shut down"), "{s}");
     assert!(!s.contains("Unlock /dev/sda3"), "{s}");
-    assert!(!s.contains("123453"), "key left on screen after unlock: {s}");
+    assert!(
+        !s.contains("123453"),
+        "key left on screen after unlock: {s}"
+    );
     keys.push(k(KeyCode::Enter));
     let (s, _) = screen(&keys);
     assert!(s.contains("Alice"), "{s}");
@@ -206,7 +212,12 @@ fn a_wrong_key_says_so_and_esc_goes_back() {
 fn a_usb_disk_is_mounted_for_writing_from_the_target_screen() {
     let mut keys = vec![k(KeyCode::Enter)];
     keys.extend(text(KEY));
-    keys.extend([k(KeyCode::Enter), k(KeyCode::Enter), k(KeyCode::Enter), k(KeyCode::Enter)]);
+    keys.extend([
+        k(KeyCode::Enter),
+        k(KeyCode::Enter),
+        k(KeyCode::Enter),
+        k(KeyCode::Enter),
+    ]);
     let (s, _) = screen(&keys);
     assert!(s.contains("Where should the backup go"), "{s}");
     assert!(s.contains("Use /dev/sdc1 · “Backup HDD”"), "{s}");
@@ -223,6 +234,9 @@ fn a_usb_disk_is_mounted_for_writing_from_the_target_screen() {
     let (s, p) = screen(&keys);
     let dir = p.target.lock().unwrap().clone().expect("mounted");
     assert!(!s.contains("Where should the backup go"), "{s}");
-    assert!(s.contains("Target: ") && s.contains("rebootly-tui-target"), "pre-flight on the mounted disk: {s}");
+    assert!(
+        s.contains("Target: ") && s.contains("rebootly-tui-target"),
+        "pre-flight on the mounted disk: {s}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }

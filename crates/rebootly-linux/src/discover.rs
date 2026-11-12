@@ -136,7 +136,10 @@ pub fn sysfs_start(kname: &str) -> Option<u64> {
 }
 
 fn wanted(fs: &str) -> bool {
-    matches!(fs.to_ascii_lowercase().as_str(), "ntfs" | "bitlocker" | "exfat")
+    matches!(
+        fs.to_ascii_lowercase().as_str(),
+        "ntfs" | "bitlocker" | "exfat"
+    )
 }
 
 /// Turn rows into volumes. `read_only(mountpoint)` reports how a mount is
@@ -205,7 +208,10 @@ pub fn discover(run: &dyn Runner) -> anyhow::Result<Vec<Volume>> {
         anyhow::bail!("lsblk failed: {}", crate::cmd::last_line(&out.stderr));
     }
     let mut rows = parse(&out.stdout)?;
-    for r in rows.iter_mut().filter(|r| r.fstype.is_none() && r.kind != "rom") {
+    for r in rows
+        .iter_mut()
+        .filter(|r| r.fstype.is_none() && r.kind != "rom")
+    {
         if let Ok(o) = run.run("blkid", &["-p", "-o", "export", &r.name], None) {
             // Exit code 2: nothing found on the device (e.g. a bare disk).
             if o.ok() {

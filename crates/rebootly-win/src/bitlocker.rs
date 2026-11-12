@@ -55,7 +55,9 @@ pub fn parse_unlock_answer(out: &str, drive: &str) -> Result<(), String> {
                  drive without a password (an OS drive with a TPM never has one) opens only \
                  with its recovery key"
             )),
-            Err(_) => Err(format!("{drive} wasn't unlocked (unexpected answer from WMI)")),
+            Err(_) => Err(format!(
+                "{drive} wasn't unlocked (unexpected answer from WMI)"
+            )),
         };
     }
     Err(match line {
@@ -104,7 +106,10 @@ mod tests {
     fn unlock_answers() {
         assert_eq!(parse_unlock_answer("rebootly:rc=0\r\n", "R:"), Ok(()));
         let e = parse_unlock_answer("rebootly:rc=2150694951", "R:").unwrap_err();
-        assert!(e.contains("0x80310027") && e.contains("check the password"), "{e}");
+        assert!(
+            e.contains("0x80310027") && e.contains("check the password"),
+            "{e}"
+        );
         let e = parse_unlock_answer("rebootly:novolume", "R:").unwrap_err();
         assert!(e.contains("isn't a BitLocker drive"), "{e}");
         let e = parse_unlock_answer("rebootly:nowmi", "R:").unwrap_err();
