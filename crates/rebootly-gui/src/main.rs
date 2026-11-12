@@ -16,6 +16,8 @@ const VERSION: &str = concat!(
 );
 
 fn main() {
+    // No console: a crash must still say something (box + crash.txt).
+    rebootly_gui::crash::install(VERSION, show_error);
     let machine = Machine::new(MachineOptions {
         version: VERSION.to_string(),
         // `Rebootly.exe --simulate-root DIR`: preview a restore off Windows.
@@ -70,7 +72,7 @@ fn arg_value(name: &str) -> Option<std::path::PathBuf> {
 }
 
 /// No console to print to: show a message box on Windows.
-fn fail(msg: &str) {
+fn show_error(msg: &str) {
     #[cfg(windows)]
     {
         rfd::MessageDialog::new()
@@ -81,5 +83,9 @@ fn fail(msg: &str) {
     }
     #[cfg(not(windows))]
     eprintln!("{msg}");
+}
+
+fn fail(msg: &str) {
+    show_error(msg);
     std::process::exit(1);
 }

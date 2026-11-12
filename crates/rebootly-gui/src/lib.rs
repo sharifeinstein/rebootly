@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod clipboard;
+pub mod crash;
 pub mod donate;
 pub mod pages;
 pub mod task;
