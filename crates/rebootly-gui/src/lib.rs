@@ -25,10 +25,34 @@ pub fn pick_adapter(
         DeviceType::Other => 3,
         DeviceType::Cpu => 4,
     };
-    adapters
+    for a in adapters {
+        let i = a.get_info();
+        crash::trace(&format!(
+            "adapter: {} ({:?}, {:?}, driver {} {})",
+            i.name, i.backend, i.device_type, i.driver, i.driver_info
+        ));
+    }
+    let chosen = adapters
         .iter()
         .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
         .min_by_key(|a| rank(a.get_info().device_type))
         .cloned()
-        .ok_or_else(|| "no graphics adapter can draw this window".to_string())
+        .ok_or_else(|| "no graphics adapter can draw this window".to_string());
+    match &chosen {
+        Ok(a) => crash::trace(&format!("chosen: {}", a.get_info().name)),
+        Err(e) => crash::trace(e),
+    }
+    chosen
+}
+
+/// Graphics backends: `WGPU_BACKEND` if set, else DirectX 12 only on
+/// Windows (Vulkan and OpenGL drivers and overlay layers can crash the
+/// process before a window exists), the usual set elsewhere.
+pub fn backends() -> eframe::wgpu::Backends {
+    use eframe::wgpu::Backends;
+    Backends::from_env().unwrap_or(if cfg!(windows) {
+        Backends::DX12
+    } else {
+        Backends::PRIMARY | Backends::GL
+    })
 }

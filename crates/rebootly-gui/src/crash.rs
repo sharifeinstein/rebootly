@@ -14,6 +14,29 @@ pub fn log_path() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/rebootly/crash.txt"))
 }
 
+/// `gui-start.txt` beside `crash.txt`: how far the last start got.
+pub fn trace_path() -> Option<PathBuf> {
+    log_path().map(|p| p.with_file_name("gui-start.txt"))
+}
+
+/// Start a new start-up trace (replaces the last one).
+pub fn trace_begin(version: &str) {
+    if let Some(p) = trace_path() {
+        let _ = write(&p, &format!("Rebootly {version}\n"));
+    }
+}
+
+/// Add a line to the start-up trace. A crash inside a graphics driver can't
+/// be caught, but the last line says where the start stopped.
+pub fn trace(line: &str) {
+    use std::io::Write;
+    if let Some(p) = trace_path()
+        && let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(p)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// The text written to `crash.txt`.
 pub fn report(version: &str, thread: &str, panic: &str, backtrace: &str) -> String {
     format!(

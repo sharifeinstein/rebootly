@@ -18,6 +18,7 @@ const VERSION: &str = concat!(
 fn main() {
     // No console: a crash must still say something (box + crash.txt).
     rebootly_gui::crash::install(VERSION, show_error);
+    rebootly_gui::crash::trace_begin(VERSION);
     let machine = Machine::new(MachineOptions {
         version: VERSION.to_string(),
         // `Rebootly.exe --simulate-root DIR`: preview a restore off Windows.
@@ -26,6 +27,7 @@ fn main() {
         packs_dir: arg_value("--packs-dir"),
     });
     let platform: Arc<dyn rebootly_host::Platform> = Arc::new(machine);
+    rebootly_gui::crash::trace("starting the window");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Rebootly")
@@ -36,9 +38,11 @@ fn main() {
         // are handled by `clipboard::translate` (system clipboard paste).
         clipboard_shortcuts: !cfg!(windows),
         wgpu_options: WgpuConfiguration {
-            wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
-                native_adapter_selector: Some(Arc::new(rebootly_gui::pick_adapter)),
-                ..WgpuSetupCreateNew::without_display_handle()
+            wgpu_setup: WgpuSetup::CreateNew({
+                let mut setup = WgpuSetupCreateNew::without_display_handle();
+                setup.instance_descriptor.backends = rebootly_gui::backends();
+                setup.native_adapter_selector = Some(Arc::new(rebootly_gui::pick_adapter));
+                setup
             }),
             ..WgpuConfiguration::default()
         },
@@ -48,12 +52,14 @@ fn main() {
         "Rebootly",
         options,
         Box::new(move |cc| {
+            rebootly_gui::crash::trace("window created");
             Ok(Box::new(rebootly_gui::RebootlyApp::new(
                 &cc.egui_ctx,
                 platform,
             )))
         }),
     );
+    rebootly_gui::crash::trace(&format!("closed: {r:?}"));
     if let Err(e) = r {
         fail(&format!(
             "Rebootly couldn't open its window: {e}\n\nThe text version works in any console: rebootly-cli.exe"
