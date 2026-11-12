@@ -163,6 +163,10 @@ pub fn check(
             "name(s) Windows can't store; they may not restore to Windows",
         ),
         (
+            IssueKind::UnsupportedReparse,
+            "file(s) this NTFS driver can't read (OneDrive files under ntfs-3g) will be missing; mount the disk with ntfs3",
+        ),
+        (
             IssueKind::CaseCollision,
             "name(s) differ only by case; one may overwrite the other on a case-insensitive target",
         ),

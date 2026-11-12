@@ -161,3 +161,43 @@ fn cloud_placeholder_attributes() {
     assert!(!is_cloud_placeholder(0x0008_0020)); // PINNED | ARCHIVE: on the device
     assert!(!is_cloud_placeholder(0x20));
 }
+
+/// ntfs-3g shows OneDrive files as links to "unsupported reparse tag …"
+/// (checked on a real ntfs-3g mount): reported, not recorded as links.
+#[cfg(unix)]
+#[test]
+fn ntfs3g_unreadable_reparse_files_are_issues() {
+    let t = tempfile::tempdir().unwrap();
+    let r = t.path();
+    touch(&r.join("plain.txt"));
+    std::os::unix::fs::symlink("unsupported reparse tag 0x9000101a", r.join("doc.txt")).unwrap();
+    std::os::unix::fs::symlink("plain.txt", r.join("link.txt")).unwrap();
+    let w = walk(
+        &job(r, None),
+        &SkipSet::default(),
+        ExcludeOptions::default(),
+    );
+    assert_eq!(w.files.len(), 1);
+    assert_eq!(
+        w.reparse_points.len(),
+        1,
+        "the ordinary link is still recorded"
+    );
+    assert_eq!(w.issues.len(), 1);
+    assert_eq!(w.issues[0].kind, IssueKind::UnsupportedReparse);
+    assert_eq!(w.issues[0].detail.as_deref(), Some("0x9000101a"));
+    assert!(
+        w.issues[0].path.ends_with("doc.txt"),
+        "{}",
+        w.issues[0].path
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn no_attributes_on_filesystems_without_ntfs_xattrs() {
+    let t = tempfile::tempdir().unwrap();
+    let p = t.path().join("f");
+    touch(&p);
+    assert_eq!(attributes(&p, &std::fs::metadata(&p).unwrap()), None);
+}

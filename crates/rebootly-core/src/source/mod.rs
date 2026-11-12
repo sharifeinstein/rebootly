@@ -7,6 +7,7 @@
 //! so the resolution logic is the same in every mode.
 
 mod access;
+pub mod cloud;
 mod offline;
 
 pub use access::{HiveRef, LoadedHive, OfflineAccess, VolumeAccess, clean_state};

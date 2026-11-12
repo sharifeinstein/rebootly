@@ -86,7 +86,8 @@ impl VolumeAccess for OfflineAccess {
     }
 
     fn open_read(&self, path: &Path) -> std::io::Result<File> {
-        File::open(path) // read-only by construction
+        // Read-only by construction; OneDrive files work without OneDrive.
+        super::cloud::open_read_only(path)
     }
 
     fn map(&self, win: &str, system_drive: char, volume_root: &Path) -> Mapped {

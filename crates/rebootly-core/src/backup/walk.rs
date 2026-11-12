@@ -3,7 +3,9 @@
 //!
 //! On Windows, std reports junctions and symlinks as `is_symlink()`; on Linux
 //! ntfs3/ntfs-3g expose them as symlinks too. Either way they are recorded,
-//! not traversed. (Cloud placeholders are other reparse tags: M4.)
+//! not traversed. OneDrive files carry other reparse tags (`attrs`,
+//! `source::cloud`); ntfs-3g can't read them and shows them as links: those
+//! are reported as issues, not recorded as links.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -13,6 +15,10 @@ use serde::Serialize;
 
 use super::exclude::{Category, CloudFiles, ExcludeOptions, classify};
 use crate::packs::glob::Glob;
+
+mod attrs;
+use attrs::attributes;
+pub use attrs::is_cloud_placeholder;
 
 /// One folder to back up.
 #[derive(Debug, Clone)]
@@ -80,6 +86,9 @@ pub enum IssueKind {
     CaseCollision,
     /// Directory could not be listed.
     Unreadable,
+    /// A file the NTFS driver can't read (ntfs-3g: OneDrive files); detail
+    /// is the reparse tag.
+    UnsupportedReparse,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -111,30 +120,6 @@ fn invalid_on_windows(name: &str) -> bool {
 /// Windows name in UTF-8 can be up to 765 bytes.
 pub fn name_too_long(name: &str) -> bool {
     name.len() > 255
-}
-
-const FILE_ATTRIBUTE_OFFLINE: u32 = 0x1000;
-const FILE_ATTRIBUTE_RECALL_ON_OPEN: u32 = 0x4_0000;
-const FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS: u32 = 0x40_0000;
-
-/// An online-only cloud file (OneDrive Files On-Demand): opening it would
-/// download it. Files kept on the device ("always keep") have none of these.
-pub fn is_cloud_placeholder(attrs: u32) -> bool {
-    attrs
-        & (FILE_ATTRIBUTE_OFFLINE
-            | FILE_ATTRIBUTE_RECALL_ON_OPEN
-            | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
-        != 0
-}
-
-#[cfg(windows)]
-fn attributes(m: &std::fs::Metadata) -> Option<u32> {
-    use std::os::windows::fs::MetadataExt;
-    Some(m.file_attributes())
-}
-#[cfg(not(windows))]
-fn attributes(_: &std::fs::Metadata) -> Option<u32> {
-    None
 }
 
 /// Planned roots a walk must not enter (nested planned folders, sensitive
@@ -231,6 +216,11 @@ pub fn walk(job: &FolderJob, skip_roots: &SkipSet, opts: ExcludeOptions) -> Walk
                 let target = std::fs::read_link(&path)
                     .ok()
                     .map(|t| t.display().to_string());
+                if let Some(tag) = target.as_deref().and_then(attrs::unsupported_reparse_tag) {
+                    out.issues
+                        .push(issue(IssueKind::UnsupportedReparse, Some(tag.into())));
+                    continue;
+                }
                 out.reparse_points.push(ReparsePoint {
                     dest: dest_of(&child_rel),
                     target,
@@ -267,7 +257,7 @@ pub fn walk(job: &FolderJob, skip_roots: &SkipSet, opts: ExcludeOptions) -> Walk
                 let meta = entry.metadata().ok();
                 if let Some(m) = meta
                     .as_ref()
-                    .filter(|m| attributes(m).is_some_and(is_cloud_placeholder))
+                    .filter(|m| attributes(&path, m).is_some_and(is_cloud_placeholder))
                 {
                     let slot = if opts.cloud_files == CloudFiles::Hydrate {
                         &mut out.to_download
@@ -289,7 +279,7 @@ pub fn walk(job: &FolderJob, skip_roots: &SkipSet, opts: ExcludeOptions) -> Walk
                     dest: dest_of(&child_rel),
                     size: meta.as_ref().map_or(0, |m| m.len()),
                     mtime: meta.as_ref().and_then(|m| m.modified().ok()),
-                    attributes: meta.as_ref().and_then(attributes),
+                    attributes: meta.as_ref().and_then(|m| attributes(&path, m)),
                     priority: job.priority,
                     src: path,
                 });
@@ -324,7 +314,7 @@ fn walk_single_file(
         size: meta.len(),
         mtime: meta.modified().ok(),
         priority: job.priority,
-        attributes: attributes(meta),
+        attributes: attributes(&job.src_root, meta),
     });
 }
 

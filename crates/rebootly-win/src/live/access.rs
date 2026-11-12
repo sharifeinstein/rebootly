@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use rebootly_core::env::Environment;
 use rebootly_core::hive::dirty;
-use rebootly_core::source::{HiveRef, LoadedHive, VolumeAccess, clean_state};
+use rebootly_core::source::{HiveRef, LoadedHive, VolumeAccess, clean_state, cloud};
 use rebootly_core::winpath::{Mapped, map_live};
 use rebootly_core::{Hive, HiveError};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -45,13 +45,20 @@ impl LiveAccess {
     }
 }
 
-/// Open for reading with backup semantics and full sharing.
+/// Open for reading with backup semantics and full sharing. In a VSS
+/// shadow copy OneDrive's filter isn't attached: downloaded OneDrive files
+/// are read through their reparse point (`source::cloud`).
 pub fn open_backup(path: &Path) -> std::io::Result<File> {
-    OpenOptions::new()
-        .read(true)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(path)
+    cloud::open_or_bypass(
+        |extra| {
+            OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | extra)
+                .open(path)
+        },
+        || cloud::own_attributes(path),
+    )
 }
 
 impl VolumeAccess for LiveAccess {
