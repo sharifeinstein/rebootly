@@ -4,6 +4,7 @@
 
 use std::fmt::Write as _;
 
+use super::failures::{self, FailLine};
 use super::manifest::{FileStatus, Manifest, ManualStep};
 use super::preflight::gib;
 use super::report::{MAX_LISTED, per_folder};
@@ -112,32 +113,33 @@ pub fn html(m: &Manifest) -> String {
     }
     s.push_str("</table>\n");
 
-    let failures: Vec<_> = m
-        .files
-        .iter()
-        .filter(|f| f.status == FileStatus::Failed)
-        .collect();
-    if !failures.is_empty() {
-        let _ = writeln!(
-            s,
-            "<h2 class=\"bad\">Failed files ({})</h2>\n<table>",
-            failures.len()
-        );
-        for f in failures.iter().take(MAX_LISTED) {
-            let _ = writeln!(
-                s,
-                "<tr><td>{}</td><td class=\"muted\">{}</td></tr>",
-                esc(&f.source),
-                esc(f.reason.as_deref().unwrap_or("?"))
-            );
+    if failed > 0 {
+        let lines = failures::lines(&m.files);
+        let _ = writeln!(s, "<h2 class=\"bad\">Failed files ({failed})</h2>\n<table>");
+        for l in lines.iter().take(MAX_LISTED) {
+            let (what, why) = match l {
+                FailLine::File { source, reason } => (esc(source), esc(reason)),
+                FailLine::Group {
+                    folder,
+                    reason,
+                    count,
+                } => (
+                    format!("{} <b>({count} files in this folder)</b>", esc(folder)),
+                    esc(reason),
+                ),
+            };
+            let _ = writeln!(s, "<tr><td>{what}</td><td class=\"muted\">{why}</td></tr>");
         }
         s.push_str("</table>\n");
-        if failures.len() > MAX_LISTED {
+        if lines.len() > MAX_LISTED {
             let _ = writeln!(
                 s,
-                "<p class=\"muted\">… and {} more (see manifest.json)</p>",
-                failures.len() - MAX_LISTED
+                "<p class=\"muted\">… and {} more line(s) (see manifest.json)</p>",
+                lines.len() - MAX_LISTED
             );
+        }
+        for h in failures::hints(&m.files) {
+            let _ = writeln!(s, "<p>{}</p>", esc(h));
         }
     }
     if let Some(sb) = &m.sensitive {

@@ -7,6 +7,7 @@ pub mod copy;
 pub mod custom;
 pub mod exclude;
 pub mod extras;
+pub mod failures;
 pub mod filecopy;
 pub mod flow;
 pub mod manifest;

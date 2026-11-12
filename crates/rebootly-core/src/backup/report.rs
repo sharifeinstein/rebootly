@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use super::failures::{self, FailLine};
 use super::manifest::{FileStatus, Manifest};
 use super::preflight::gib;
 
@@ -94,27 +95,28 @@ pub fn text(m: &Manifest) -> String {
         let _ = writeln!(s, "  {k:<50} {n:>7} files  {}", gib(*b));
     }
 
-    let failures: Vec<_> = m
-        .files
-        .iter()
-        .filter(|f| f.status == FileStatus::Failed)
-        .collect();
-    if !failures.is_empty() {
-        let _ = writeln!(s, "\nFailed files ({}):", failures.len());
-        for f in failures.iter().take(MAX_LISTED) {
+    if failed > 0 {
+        let lines = failures::lines(&m.files);
+        let _ = writeln!(s, "\nFailed files ({failed}):");
+        for l in lines.iter().take(MAX_LISTED) {
+            let _ = match l {
+                FailLine::File { source, reason } => writeln!(s, "  {source}  -- {reason}"),
+                FailLine::Group {
+                    folder,
+                    reason,
+                    count,
+                } => writeln!(s, "  {folder}  -- {count} files in this folder: {reason}"),
+            };
+        }
+        if lines.len() > MAX_LISTED {
             let _ = writeln!(
                 s,
-                "  {}  -- {}",
-                f.source,
-                f.reason.as_deref().unwrap_or("?")
+                "  ... and {} more line(s) (see manifest.json)",
+                lines.len() - MAX_LISTED
             );
         }
-        if failures.len() > MAX_LISTED {
-            let _ = writeln!(
-                s,
-                "  ... and {} more (see manifest.json)",
-                failures.len() - MAX_LISTED
-            );
+        for h in failures::hints(&m.files) {
+            let _ = writeln!(s, "  Why: {h}");
         }
     }
     if let Some(sb) = &m.sensitive {

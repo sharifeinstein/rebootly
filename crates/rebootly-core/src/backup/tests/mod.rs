@@ -208,6 +208,11 @@ fn bad_file_is_logged_and_the_job_continues() {
     );
     assert!(m.complete);
     assert!(m.counts().0 > 5);
+    let txt = std::fs::read_to_string(job.dir.join("report.txt")).unwrap();
+    assert!(txt.contains("Failed files (1):"), "{txt}");
+    assert!(txt.contains(r"Documents\report.txt  -- "), "{txt}");
+    let html = std::fs::read_to_string(job.dir.join("report.html")).unwrap();
+    assert!(html.contains("Failed files (1)"), "{html}");
 }
 
 #[test]
