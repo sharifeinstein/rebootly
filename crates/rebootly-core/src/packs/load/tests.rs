@@ -76,6 +76,34 @@ registry: ["HKLM\\Software\\X"]
 }
 
 #[test]
+fn redact_and_secret_values_are_checked() {
+    let bad = r#"
+schema: 1
+id: x
+name: X
+detect: { any: [{ always: true }] }
+paths:
+  - src: "%APPDATA%\\X"
+    sensitive: true
+    redact: [{ file: "a.xml", xml: ["Pass"] }]
+  - src: "%APPDATA%\\Y"
+    redact: [{ file: "../b.ini" }, { xml: ["Setting[name]"] }]
+secret_values: ["Password"]
+"#;
+    let e = parse(bad, "bad.yaml").unwrap_err();
+    let text = e.to_string();
+    for needle in [
+        "paths[0]: `redact` needs a plain copy",
+        "paths[1].redact[0]: needs `xml` or `ini`",
+        "paths[1].redact[0]: file",
+        "paths[1].redact[1]: xml selector",
+        "secret_values: the pack has no `registry` keys",
+    ] {
+        assert!(text.contains(needle), "missing {needle:?} in:\n{text}");
+    }
+}
+
+#[test]
 fn yaml_errors_have_positions_and_unknown_fields_fail() {
     let e = parse("schema: 1\nid: x\nname: X\ndetect: {any: [{always: true}]}\npaths: [{src: '%APPDATA%', bogus: 1}]\n", "t")
         .unwrap_err();

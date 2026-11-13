@@ -42,6 +42,12 @@ pub const BUILTIN: &[(&str, &str)] = &[
         include_str!("../../../../packs/sticky-notes.yaml"),
     ),
     (
+        "filezilla.yaml",
+        include_str!("../../../../packs/filezilla.yaml"),
+    ),
+    ("putty.yaml", include_str!("../../../../packs/putty.yaml")),
+    ("winscp.yaml", include_str!("../../../../packs/winscp.yaml")),
+    (
         "windows-shell.yaml",
         include_str!("../../../../packs/windows-shell.yaml"),
     ),

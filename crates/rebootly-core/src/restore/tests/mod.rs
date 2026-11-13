@@ -2,6 +2,7 @@
 //! into a simulated new profile, with a recording host.
 
 mod conflicts;
+mod secrets;
 mod undo;
 
 use std::cell::RefCell;

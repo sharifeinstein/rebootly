@@ -50,7 +50,7 @@ impl PathFilter {
     fn skip_dir(&self, rel: &str) -> bool {
         self.exclude.iter().any(|g| g.matches(rel))
     }
-    fn skip_file(&self, rel: &str) -> bool {
+    pub fn skip_file(&self, rel: &str) -> bool {
         self.skip_dir(rel)
             || (!self.include.is_empty() && !self.include.iter().any(|g| g.matches(rel)))
     }

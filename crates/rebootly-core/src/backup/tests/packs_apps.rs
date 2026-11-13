@@ -59,7 +59,10 @@ fn brave_copies_the_allowlist_only() {
     assert!(ud.join("Default/Bookmarks").is_file());
     assert!(ud.join("Default/Preferences").is_file());
     assert!(ud.join("Profile 1/History").is_file());
-    assert!(ud.join("Profile 1/Local Extension Settings/abc/000003.log").is_file());
+    assert!(
+        ud.join("Profile 1/Local Extension Settings/abc/000003.log")
+            .is_file()
+    );
     for gone in [
         "Local State",
         "Default/Login Data",

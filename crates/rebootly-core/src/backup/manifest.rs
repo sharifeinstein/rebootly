@@ -116,9 +116,10 @@ pub struct PackPathRecord {
     pub listed: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PackPathStatus {
+    #[default]
     Copied,
     Listed,
     /// Sensitive and no passphrase given: not copied at all.
@@ -145,6 +146,25 @@ pub struct PackRecord {
     pub paths: Vec<PackPathRecord>,
     /// `.reg` file with the pack's HKCU keys, if any were present.
     pub registry_file: Option<String>,
+    /// Saved passwords found in the pack's files or registry keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secrets: Option<PackSecrets>,
+}
+
+/// Saved passwords of a pack (`redact:` / `secret_values:`): stripped from
+/// the plain backup; the whole files and keys are in the bundle when
+/// `status` is `encrypted` (same paths as in the plain backup).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackSecrets {
+    /// `encrypted` or `sensitive_not_copied`.
+    pub status: PackPathStatus,
+    /// Backup paths of the files that held saved passwords: in the plain
+    /// backup without them (or not at all, if they couldn't be read).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+    /// Registry values left out of `registry_file`.
+    #[serde(default)]
+    pub registry_values: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

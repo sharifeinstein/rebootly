@@ -1,0 +1,33 @@
+schema: 1
+id: filezilla
+name: FileZilla
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\FileZilla\\filezilla.xml"
+    - path: "%APPDATA%\\FileZilla\\sitemanager.xml"
+    - uninstall_name: "FileZilla*"
+winget_id: TimKosse.FileZilla.Client
+paths:
+  - src: "%APPDATA%\\FileZilla"
+    # Settings, Site Manager, recent servers, bookmarks, filters, layout,
+    # trusted certificates and the transfer queue.
+    include: ["*.xml", "queue.sqlite3"]
+    rewrite: true            # local folders and key file paths
+    # Saved passwords (base64, or encrypted with a master password) are
+    # stripped from the plain copy; with a passphrase the whole files also
+    # go into the encrypted bundle.
+    redact:
+      - file: "sitemanager.xml"
+        xml: ["Pass"]
+      - file: "recentservers.xml"
+        xml: ["Pass"]
+      - file: "filezilla.xml"
+        xml: ["Setting[name=*password*]"]
+requires_closed: ["filezilla.exe"]
+os: [win10, win11]
+notes: >-
+  Sites, bookmarks and settings move. Saved passwords move only in the
+  encrypted bundle (backup with a passphrase); otherwise enter them again in
+  the Site Manager. Key files named in the settings stay where they are:
+  copy them yourself if they aren't in a backed-up folder.

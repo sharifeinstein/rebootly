@@ -97,6 +97,7 @@ pub fn map_files(ctx: &MapCtx<'_>, bundle: Option<&Bundle>) -> Mapped {
         place(ctx, item, &mut out);
     }
     if let Some(b) = bundle {
+        let plain = out.files.len();
         for f in &b.index.files {
             if !f.path.starts_with("users/") {
                 continue; // system/ items of the bundle: see `system`
@@ -115,6 +116,17 @@ pub fn map_files(ctx: &MapCtx<'_>, bundle: Option<&Bundle>) -> Mapped {
             };
             place(ctx, item, &mut out);
         }
+        // A file in both (a pack file whose saved passwords were stripped
+        // from the plain copy): the bundle's complete copy wins.
+        let full: std::collections::BTreeSet<String> = out.files[plain..]
+            .iter()
+            .map(|f| f.dst.to_lowercase())
+            .collect();
+        let mut i = 0;
+        out.files.retain(|f| {
+            i += 1;
+            i > plain || !full.contains(&f.dst.to_lowercase())
+        });
     }
     out
 }

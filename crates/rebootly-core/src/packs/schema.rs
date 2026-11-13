@@ -27,6 +27,10 @@ pub struct Pack {
     /// HKCU keys exported (recursively) to `.reg`.
     #[serde(default)]
     pub registry: Vec<String>,
+    /// Registry value names (any key of `registry`, case-insensitive) that
+    /// hold saved passwords: left out of the plain `.reg` (SPEC §6).
+    #[serde(default)]
+    pub secret_values: Vec<String>,
     #[serde(default)]
     pub requires_closed: Vec<String>,
     /// Empty = any Windows version.
@@ -116,6 +120,10 @@ pub struct PackPath {
     /// Goes to the encrypted sensitive bundle (SPEC §9), never plain.
     #[serde(default)]
     pub sensitive: bool,
+    /// Files whose saved passwords are stripped from the plain copy; the
+    /// whole file also goes into the encrypted bundle (SPEC §6).
+    #[serde(default)]
+    pub redact: Vec<super::redact::Redact>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,6 +235,16 @@ impl Pack {
                     "paths[{i}]: `include` and `rewrite` have no effect with mode: list_only"
                 ));
             }
+            if !p.redact.is_empty() && (p.sensitive || p.mode == Mode::ListOnly) {
+                errs.push(format!(
+                    "paths[{i}]: `redact` needs a plain copy (not sensitive or list_only)"
+                ));
+            }
+            for (j, r) in p.redact.iter().enumerate() {
+                for e in r.problems() {
+                    errs.push(format!("paths[{i}].redact[{j}]: {e}"));
+                }
+            }
             let mut compile = |list: &[String], what: &str| -> Vec<Glob> {
                 list.iter()
                     .filter_map(|g| {
@@ -246,6 +264,12 @@ impl Pack {
                     "registry: {k:?} must be an HKCU\\ key (HKLM is not supported in packs)"
                 ));
             }
+        }
+        if !self.secret_values.is_empty() && self.registry.is_empty() {
+            errs.push("secret_values: the pack has no `registry` keys".into());
+        }
+        if self.secret_values.iter().any(|v| v.trim().is_empty()) {
+            errs.push("secret_values: names must not be empty".into());
         }
         if errs.is_empty() {
             Ok(CompiledPack {

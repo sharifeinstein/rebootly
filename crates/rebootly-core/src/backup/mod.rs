@@ -11,6 +11,7 @@ pub mod failures;
 pub mod filecopy;
 pub mod flow;
 pub mod manifest;
+mod pack_secrets;
 pub mod plan;
 pub mod preflight;
 pub mod profile;

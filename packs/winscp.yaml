@@ -1,0 +1,39 @@
+schema: 1
+id: winscp
+name: WinSCP
+version: 1
+detect:
+  any:
+    - registry: "HKCU\\Software\\Martin Prikryl\\WinSCP 2"
+    - path: "%APPDATA%\\WinSCP.ini"
+    - uninstall_name: "WinSCP*"
+winget_id: WinSCP.WinSCP
+# WinSCP keeps its settings in the registry (installed) or in WinSCP.ini
+# (when chosen, or when its program folder isn't writable). Stored passwords
+# are only obfuscated: they are stripped from the plain copy; with a
+# passphrase the full key and file also go into the encrypted bundle.
+registry:
+  - "HKCU\\Software\\Martin Prikryl\\WinSCP 2"
+secret_values:
+  - "Password"
+  - "ProxyPassword"
+  - "TunnelPassword"
+  - "UseMasterPassword"
+  - "MasterPasswordVerifier"
+paths:
+  - src: "%APPDATA%\\WinSCP.ini"
+    rewrite: true
+    redact:
+      - ini:
+          - "Password"
+          - "ProxyPassword"
+          - "TunnelPassword"
+          - "UseMasterPassword"
+          - "MasterPasswordVerifier"
+requires_closed: ["WinSCP.exe"]
+os: [win10, win11]
+notes: >-
+  Sites, host keys and preferences move. Saved passwords move only in the
+  encrypted bundle (backup with a passphrase); otherwise enter them again.
+  A portable WinSCP keeps WinSCP.ini beside WinSCP.exe: add that folder as
+  a custom folder.

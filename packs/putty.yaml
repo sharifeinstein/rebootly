@@ -1,0 +1,21 @@
+schema: 1
+id: putty
+name: PuTTY
+version: 1
+detect:
+  any:
+    - registry: "HKCU\\Software\\SimonTatham\\PuTTY"
+    - uninstall_name: "PuTTY*"
+winget_id: PuTTY.PuTTY
+# Saved sessions, known host keys and the jump list. PuTTY stores no login
+# passwords; a saved proxy password is left out of the plain .reg.
+registry:
+  - "HKCU\\Software\\SimonTatham\\PuTTY"
+secret_values: ["ProxyPassword"]
+requires_closed: ["putty.exe", "pageant.exe"]
+os: [win10, win11]
+notes: >-
+  Saved sessions and known host keys move. Private key files (.ppk) stay
+  where you saved them: keep them in your .ssh folder (backed up encrypted
+  with a passphrase) or copy them yourself; sessions that point into the old
+  profile are updated on restore.

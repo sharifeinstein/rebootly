@@ -50,18 +50,29 @@ fn value_line(v: &crate::hive::Value) -> String {
     format!("{name}={data}")
 }
 
-fn export_key(k: &Key<'_>, path: &str, out: &mut String, count: &mut usize) -> HiveResult<()> {
-    *count += 1;
-    if *count > MAX_KEYS {
+/// Walk state: keys seen (loop guard), values left out, the value filter.
+struct Walk<'a> {
+    keys: usize,
+    dropped: usize,
+    drop: &'a dyn Fn(&str) -> bool,
+}
+
+fn export_key(k: &Key<'_>, path: &str, out: &mut String, w: &mut Walk<'_>) -> HiveResult<()> {
+    w.keys += 1;
+    if w.keys > MAX_KEYS {
         return Err(crate::hive::HiveError::TooDeep);
     }
     let _ = write!(out, "\r\n[{path}]\r\n");
     for v in k.values()? {
-        let _ = write!(out, "{}\r\n", value_line(&v));
+        if (w.drop)(&v.name) {
+            w.dropped += 1;
+        } else {
+            let _ = write!(out, "{}\r\n", value_line(&v));
+        }
     }
     for sub in k.subkeys()? {
         let child = format!("{path}\\{}", sub.name());
-        export_key(&sub, &child, out, count)?;
+        export_key(&sub, &child, out, w)?;
     }
     Ok(())
 }
@@ -69,6 +80,17 @@ fn export_key(k: &Key<'_>, path: &str, out: &mut String, count: &mut usize) -> H
 /// Export `subpath` (relative to the hive root) and everything below it.
 /// `root_label` is e.g. `HKEY_CURRENT_USER`. `None` if the key is absent.
 pub fn export(hive: &Hive, subpath: &str, root_label: &str) -> HiveResult<Option<String>> {
+    Ok(export_without(hive, subpath, root_label, &|_| false)?.map(|(s, _)| s))
+}
+
+/// Like [`export`], leaving out values for which `drop(name)` is true;
+/// also returns how many were left out.
+pub fn export_without(
+    hive: &Hive,
+    subpath: &str,
+    root_label: &str,
+    drop: &dyn Fn(&str) -> bool,
+) -> HiveResult<Option<(String, usize)>> {
     let Some(key) = hive.open_key(subpath)? else {
         return Ok(None);
     };
@@ -82,22 +104,33 @@ pub fn export(hive: &Hive, subpath: &str, root_label: &str) -> HiveResult<Option
         canonical.push(cur.name().to_owned());
     }
     let mut out = String::new();
+    let mut w = Walk {
+        keys: 0,
+        dropped: 0,
+        drop,
+    };
     export_key(
         &key,
         &format!("{root_label}\\{}", canonical.join("\\")),
         &mut out,
-        &mut 0,
+        &mut w,
     )?;
-    Ok(Some(out))
+    Ok(Some((out, w.dropped)))
 }
 
-/// Wrap exported sections into a complete `.reg` file (UTF-16LE + BOM).
-pub fn to_reg_file(sections: &[String]) -> Vec<u8> {
+/// Wrap exported sections into a complete `.reg` text.
+pub fn to_reg_text(sections: &[String]) -> String {
     let mut text = String::from("Windows Registry Editor Version 5.00\r\n");
     for s in sections {
         text.push_str(s);
     }
     text.push_str("\r\n");
+    text
+}
+
+/// Wrap exported sections into a complete `.reg` file (UTF-16LE + BOM).
+pub fn to_reg_file(sections: &[String]) -> Vec<u8> {
+    let text = to_reg_text(sections);
     let mut bytes = vec![0xFF, 0xFE];
     bytes.extend(text.encode_utf16().flat_map(u16::to_le_bytes));
     bytes
@@ -143,6 +176,26 @@ mod tests {
         )
         .unwrap();
         assert!(text.starts_with("Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER"));
+    }
+
+    #[test]
+    fn listed_values_are_left_out() {
+        let mut w = HiveWriter::new("ROOT");
+        w.key(r"Software\App\Sessions\a")
+            .sz("HostName", "h")
+            .sz("Password", "A35C");
+        w.key(r"Software\App\Sessions\b").sz("PASSWORD", "x");
+        let h = Hive::from_bytes(w.to_bytes()).unwrap();
+        let drop = |n: &str| n.eq_ignore_ascii_case("password");
+        let (s, n) = export_without(&h, r"Software\App", "HKEY_CURRENT_USER", &drop)
+            .unwrap()
+            .unwrap();
+        assert_eq!(n, 2);
+        assert!(
+            s.contains("\"HostName\"=\"h\"") && !s.contains("A35C"),
+            "{s}"
+        );
+        assert!(s.contains("[HKEY_CURRENT_USER\\Software\\App\\Sessions\\b]"));
     }
 
     #[test]

@@ -182,7 +182,7 @@ pub fn plan(
     let mut blockers = Vec::new();
     let mut skipped = mapped.skipped;
     let registry = if opts.registry {
-        registry(&ctx, &mut skipped)
+        registry(&ctx, bundle, &mut skipped)
     } else {
         Vec::new()
     };

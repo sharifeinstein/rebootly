@@ -110,7 +110,8 @@ fn system() -> HiveWriter {
     w
 }
 
-fn alice() -> HiveWriter {
+/// Alice's NTUSER.DAT (tests add keys to it and write it over the fixture's).
+pub fn alice() -> HiveWriter {
     let mut w = HiveWriter::new("ROOT");
     w.key(USER_SHELL_FOLDERS)
         .expand_sz("Desktop", r"%USERPROFILE%\Desktop")

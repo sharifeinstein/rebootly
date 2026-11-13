@@ -3,11 +3,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::manifest::{ManualStep, PackPathRecord, PackPathStatus, PackRecord};
+use super::manifest::{ManualStep, PackPathRecord, PackPathStatus, PackRecord, PackSecrets};
+use super::pack_secrets;
 use super::plan::{PACK_PRIORITY, Plan, PlanOptions};
 use super::walk::{FolderJob, PathFilter, rel_components};
 use crate::packs::detect::{DetectCtx, detect, os_tag};
-use crate::packs::schema::{Mode, hkcu_subpath};
+use crate::packs::schema::Mode;
 use crate::source::{Profile, ResolvedFolder, Source, SourceError};
 use crate::winpath::Mapped;
 
@@ -71,6 +72,7 @@ pub fn plan_user_packs(
         os: os_tag(plan.source.build),
     };
     let mut sensitive = Vec::new();
+    let mut passwords = Vec::new();
 
     for cp in &opts.packs {
         let Ok(reason) = detect(cp, &ctx) else {
@@ -90,7 +92,9 @@ pub fn plan_user_packs(
             post_restore: pack.post_restore.clone(),
             paths: Vec::new(),
             registry_file: None,
+            secrets: None,
         };
+        let mut secrets = PackSecrets::default();
         let mut used_leaves: Vec<String> = Vec::new();
         for (i, pp) in pack.paths.iter().enumerate() {
             let e = vars.expand(&pp.src);
@@ -174,33 +178,44 @@ pub fn plan_user_packs(
                     profile_rel: rel_components(&local, profile_dir),
                     dest_root: dest.clone(),
                     priority: PACK_PRIORITY,
-                    filter,
+                    filter: filter.clone(),
                 });
+                let at = pack_secrets::PlainPath {
+                    uname,
+                    pack_id: &pack.id,
+                    local: &local,
+                    win: &e.text,
+                    dest: &dest,
+                    profile_dir,
+                    filter: filter.as_ref(),
+                };
+                pack_secrets::redact_path(pp, &at, plan, &mut secrets);
                 prec.status = PackPathStatus::Copied;
                 prec.dest = Some(dest);
             }
             rec.paths.push(prec);
         }
         if let Some(h) = &ntuser {
-            let sections: Vec<String> = pack
-                .registry
-                .iter()
-                .filter_map(|k| hkcu_subpath(k))
-                .filter_map(|sub| {
-                    crate::regfile::export(h, sub, "HKEY_CURRENT_USER")
-                        .ok()
-                        .flatten()
-                })
-                .collect();
+            let dest = format!("users/{uname}/registry/{}.reg", pack.id);
+            let source = format!(r"HKCU of {uname} ({})", profile.profile_path);
+            let sections =
+                pack_secrets::registry(pack, h, &dest, &source, opts, plan, &mut secrets);
             if !sections.is_empty() {
-                let dest = format!("users/{uname}/registry/{}.reg", pack.id);
                 plan.generated.push(GeneratedFile {
                     dest: dest.clone(),
                     bytes: crate::regfile::to_reg_file(&sections),
-                    source: format!(r"HKCU of {uname} ({})", profile.profile_path),
+                    source,
                 });
                 rec.registry_file = Some(dest);
             }
+        }
+        rec.secrets = pack_secrets::finish(secrets, opts);
+        if rec
+            .secrets
+            .as_ref()
+            .is_some_and(|s| s.status == PackPathStatus::SensitiveNotCopied)
+        {
+            passwords.push(pack.name.clone());
         }
         // Installed machine-wide but nothing of this user's: not their app.
         let has_data = rec.registry_file.is_some()
@@ -213,6 +228,17 @@ pub fn plan_user_packs(
         if has_data {
             plan.packs.push(rec);
         }
+    }
+    if !passwords.is_empty() {
+        plan.manual_steps.push(ManualStep {
+            title: format!("Saved passwords of {uname} were not copied"),
+            detail: format!(
+                "{} keep saved passwords next to their sites or sessions. The sites and sessions \
+                 were copied without them: enter the passwords again on the new PC, or run the \
+                 backup again with a passphrase (--sensitive, or Full) to move them encrypted.",
+                passwords.join(", ")
+            ),
+        });
     }
     if !sensitive.is_empty() {
         plan.manual_steps.push(ManualStep {

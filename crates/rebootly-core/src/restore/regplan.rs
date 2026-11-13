@@ -2,11 +2,16 @@
 //! allowlist (as installed in this Rebootly, not as the backup claims) and
 //! the old profile path inside it is rewritten.
 
+use super::input::Bundle;
 use super::map::{MapCtx, Skip};
 use super::plan::RegAction;
 use super::regcheck;
 
-pub(super) fn registry(ctx: &MapCtx<'_>, skipped: &mut Vec<Skip>) -> Vec<RegAction> {
+pub(super) fn registry(
+    ctx: &MapCtx<'_>,
+    bundle: Option<&Bundle>,
+    skipped: &mut Vec<Skip>,
+) -> Vec<RegAction> {
     let mut out = Vec::new();
     for r in ctx
         .backup
@@ -41,7 +46,12 @@ pub(super) fn registry(ctx: &MapCtx<'_>, skipped: &mut Vec<Skip>) -> Vec<RegActi
                 continue;
             }
         }
-        let Some(path) = ctx.backup.file(rel).and_then(|_| ctx.backup.local(rel)) else {
+        // With saved passwords in the bundle, its full copy replaces the plain one.
+        let full = bundle
+            .filter(|b| b.index.files.iter().any(|f| f.path == rel))
+            .and_then(|b| b.local(rel));
+        let plain = || ctx.backup.file(rel).and_then(|_| ctx.backup.local(rel));
+        let Some(path) = full.or_else(plain) else {
             skip("missing from the backup".into());
             continue;
         };
