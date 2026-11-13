@@ -8,17 +8,18 @@
   (rescue\alpine\build.sh, rescue\winpe\build.ps1).
 
 .EXAMPLE
-  .\scripts\package-release.ps1 -DonateUrl https://buymeacoffee.com/yourname
+  .\scripts\package-release.ps1
+  .\scripts\package-release.ps1 -DonateUrl ""   (no donation card)
 
 .PARAMETER DonateUrl
-  Link for the optional "buy me a coffee" card. Without it the card is
-  not shown.
+  Link for the optional "buy me a coffee" card (default: the owner's
+  Buy Me a Coffee page). An empty value leaves the card out.
 
 .PARAMETER SkipTests
   Don't run `cargo test` first.
 #>
 param(
-    [string]$DonateUrl = "",
+    [string]$DonateUrl = "https://www.buymeacoffee.com/sharifstuff",
     [switch]$SkipTests
 )
 $ErrorActionPreference = "Stop"
