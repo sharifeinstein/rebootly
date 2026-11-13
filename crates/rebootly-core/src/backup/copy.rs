@@ -4,9 +4,11 @@
 //! Only the main stream is copied here (bytes are streamed, not
 //! `CopyFileEx`); alternate data streams are handled by `filecopy`.
 //!
-//! A file that another program holds locked (sharing or lock violation) is
-//! retried once at once from a consistent snapshot (VSS in live mode), via
-//! the `open(true)` call.
+//! A file that another program holds locked (sharing or lock violation), or
+//! that can't be opened or read ("Access is denied": a filter driver such as
+//! an antivirus's, which often isn't attached to shadow copies), is retried
+//! at once from a consistent snapshot (VSS in live mode), via the
+//! `open(true)` call. Errors writing the destination never switch.
 
 use super::flow::Flow;
 use std::fs::File;
@@ -79,43 +81,60 @@ pub fn is_lock_error(e: &io::Error) -> bool {
         || e.kind() == io::ErrorKind::ResourceBusy
 }
 
+/// Reading the source should be tried from the snapshot: locked, or access
+/// denied (Windows `ERROR_ACCESS_DENIED`, os error 5, even with backup
+/// semantics: usually a filter driver).
+pub fn try_snapshot(e: &io::Error) -> bool {
+    is_lock_error(e) || e.kind() == io::ErrorKind::PermissionDenied
+}
+
+/// Where a copy failed: reading the source or writing the destination.
+#[derive(Debug)]
+enum Side {
+    Source,
+    Dest,
+}
+
 fn copy_once(
     open: &Opener<'_>,
     snapshot: bool,
     dest: &Path,
     mtime: Option<SystemTime>,
     flow: &Flow,
-) -> io::Result<(String, u64)> {
-    let mut src = open(snapshot)?;
+) -> Result<(String, u64), (Side, io::Error)> {
+    let src_err = |e| (Side::Source, e);
+    let dst_err = |e| (Side::Dest, e);
+    let mut src = open(snapshot).map_err(src_err)?;
     if let Some(dir) = dest.parent() {
-        std::fs::create_dir_all(dir)?;
+        std::fs::create_dir_all(dir).map_err(dst_err)?;
     }
     let tmp = partial_path(dest);
-    let mut out = File::create(&tmp)?;
+    let mut out = File::create(&tmp).map_err(dst_err)?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; BUF];
     let mut total = 0u64;
     loop {
         if !flow.proceed() {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+            let e = io::Error::new(io::ErrorKind::Interrupted, "cancelled");
+            return Err(dst_err(e));
         }
         let n = match src.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
+            Err(e) => return Err(src_err(e)),
         };
         hasher.update(&buf[..n]);
-        out.write_all(&buf[..n])?;
+        out.write_all(&buf[..n]).map_err(dst_err)?;
         total += n as u64;
         flow.add_bytes(n as u64);
     }
     if let Some(t) = mtime {
-        out.set_modified(t)?;
+        out.set_modified(t).map_err(dst_err)?;
     }
-    out.sync_all()?;
+    out.sync_all().map_err(dst_err)?;
     drop(out);
-    std::fs::rename(&tmp, dest)?;
+    std::fs::rename(&tmp, dest).map_err(dst_err)?;
     Ok((hex(&hasher.finalize()), total))
 }
 
@@ -130,6 +149,7 @@ pub fn copy_file(
     let attempts = policy.attempts.max(1);
     let mut last = String::new();
     let mut snapshot = false;
+    let mut denied: Option<String> = None;
     let mut attempt = 0;
     let mut wait = false;
     while attempt < attempts {
@@ -145,30 +165,33 @@ pub fn copy_file(
                     from_snapshot: snapshot,
                 });
             }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => {
+            Err((_, e)) if e.kind() == io::ErrorKind::Interrupted => {
                 let _ = std::fs::remove_file(partial_path(dest));
                 return Err(CopyFailed {
                     reason: "cancelled".into(),
                     attempts: attempt + 1,
                 });
             }
-            // Locked: switch to the snapshot straight away (no backoff,
-            // doesn't use up an attempt).
-            Err(e) if !snapshot && is_lock_error(&e) => {
+            // Locked or denied: switch to the snapshot straight away (no
+            // backoff, doesn't use up an attempt).
+            Err((Side::Source, e)) if !snapshot && try_snapshot(&e) => {
                 snapshot = true;
                 wait = false;
+                denied = (!is_lock_error(&e)).then(|| e.to_string());
                 last = e.to_string();
                 continue;
             }
-            // No snapshot possible (offline, or VSS failed): retrying won't help.
-            Err(e) if snapshot && e.kind() == io::ErrorKind::Unsupported => {
+            // No snapshot possible (offline, or VSS failed): retrying won't
+            // help. For "Access is denied" that error is the useful one (the
+            // snapshot's "close the program" hint is about locks).
+            Err((_, e)) if snapshot && e.kind() == io::ErrorKind::Unsupported => {
                 let _ = std::fs::remove_file(partial_path(dest));
                 return Err(CopyFailed {
-                    reason: e.to_string(),
+                    reason: denied.take().unwrap_or_else(|| e.to_string()),
                     attempts: attempt + 1,
                 });
             }
-            Err(e) => last = e.to_string(),
+            Err((_, e)) => last = e.to_string(),
         }
         attempt += 1;
         wait = true;
@@ -196,123 +219,4 @@ pub fn hash_file(path: &Path) -> io::Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    fn cancelled() -> Flow {
-        let f = Flow::default();
-        f.stop();
-        f
-    }
-
-    const NO_WAIT: RetryPolicy = RetryPolicy {
-        attempts: 3,
-        base_delay: Duration::ZERO,
-        max_delay: Duration::ZERO,
-    };
-
-    #[test]
-    fn copies_hashes_and_keeps_mtime() {
-        let t = tempfile::tempdir().unwrap();
-        let src = t.path().join("src.bin");
-        std::fs::write(&src, b"abc").unwrap();
-        let when = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-        let dest = t.path().join("out/deep/src.bin");
-        let open = |_| File::open(&src);
-        let ok = copy_file(&open, &dest, Some(when), NO_WAIT, &Flow::default()).unwrap();
-        // SHA-256("abc")
-        assert_eq!(
-            ok.sha256,
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-        assert_eq!((ok.bytes, ok.attempts), (3, 1));
-        assert_eq!(std::fs::metadata(&dest).unwrap().modified().unwrap(), when);
-        assert!(!partial_path(&dest).exists());
-        assert_eq!(hash_file(&dest).unwrap(), ok.sha256);
-    }
-
-    #[test]
-    fn retries_then_succeeds_or_gives_up() {
-        let t = tempfile::tempdir().unwrap();
-        let src = t.path().join("s");
-        std::fs::write(&src, b"data").unwrap();
-        let fails = AtomicU32::new(2);
-        let flaky = |_| {
-            if fails.load(Ordering::SeqCst) > 0 {
-                fails.fetch_sub(1, Ordering::SeqCst);
-                Err(io::Error::other("bad sector"))
-            } else {
-                File::open(&src)
-            }
-        };
-        let ok = copy_file(
-            &flaky,
-            &t.path().join("d1"),
-            None,
-            NO_WAIT,
-            &Flow::default(),
-        );
-        assert_eq!(ok.unwrap().attempts, 3);
-
-        let never = |_| -> io::Result<File> { Err(io::Error::other("bad sector")) };
-        let err = copy_file(
-            &never,
-            &t.path().join("d2"),
-            None,
-            NO_WAIT,
-            &Flow::default(),
-        )
-        .unwrap_err();
-        assert_eq!(
-            err,
-            CopyFailed {
-                reason: "bad sector".into(),
-                attempts: 3
-            }
-        );
-        assert!(!t.path().join("d2").exists());
-    }
-
-    #[test]
-    fn cancel_stops_without_leaving_partials() {
-        let t = tempfile::tempdir().unwrap();
-        let src = t.path().join("s");
-        std::fs::write(&src, b"data").unwrap();
-        let dest = t.path().join("d");
-        let open = |_| File::open(&src);
-        let err = copy_file(&open, &dest, None, NO_WAIT, &cancelled()).unwrap_err();
-        assert_eq!(err.reason, "cancelled");
-        assert!(!dest.exists() && !partial_path(&dest).exists());
-    }
-
-    #[test]
-    fn locked_file_is_read_from_the_snapshot() {
-        let t = tempfile::tempdir().unwrap();
-        let snap = t.path().join("snap");
-        std::fs::write(&snap, b"abc").unwrap();
-        let busy = || io::Error::from(io::ErrorKind::ResourceBusy);
-        let open = |s: bool| if s { File::open(&snap) } else { Err(busy()) };
-        let ok = copy_file(&open, &t.path().join("d"), None, NO_WAIT, &Flow::default()).unwrap();
-        assert!(ok.from_snapshot);
-        assert_eq!(ok.attempts, 1);
-
-        // No snapshot available: one clear failure, no pointless retries.
-        let none = |s: bool| -> io::Result<File> {
-            if s {
-                Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "close the program",
-                ))
-            } else {
-                Err(busy())
-            }
-        };
-        let err =
-            copy_file(&none, &t.path().join("e"), None, NO_WAIT, &Flow::default()).unwrap_err();
-        assert_eq!(
-            (err.reason.as_str(), err.attempts),
-            ("close the program", 1)
-        );
-    }
-}
+mod tests;
