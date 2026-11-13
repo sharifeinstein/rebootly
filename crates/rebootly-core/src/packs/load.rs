@@ -32,6 +32,15 @@ pub const BUILTIN: &[(&str, &str)] = &[
         "notepadpp.yaml",
         include_str!("../../../../packs/notepadpp.yaml"),
     ),
+    ("brave.yaml", include_str!("../../../../packs/brave.yaml")),
+    (
+        "thunderbird.yaml",
+        include_str!("../../../../packs/thunderbird.yaml"),
+    ),
+    (
+        "sticky-notes.yaml",
+        include_str!("../../../../packs/sticky-notes.yaml"),
+    ),
     (
         "windows-shell.yaml",
         include_str!("../../../../packs/windows-shell.yaml"),

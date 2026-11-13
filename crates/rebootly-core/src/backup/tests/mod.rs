@@ -287,6 +287,7 @@ fn folder_filter_limits_plan() {
 
 mod live_like;
 mod packs;
+mod packs_apps;
 mod sensitive;
 mod snapshot;
 mod system;

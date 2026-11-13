@@ -1,0 +1,34 @@
+schema: 1
+id: thunderbird
+name: Mozilla Thunderbird
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\Thunderbird\\profiles.ini"
+    - uninstall_name: "Mozilla Thunderbird*"
+winget_id: Mozilla.Thunderbird
+paths:
+  # Whole profiles (mail, address books, calendars, filters, settings), as
+  # Mozilla's own migration guide does. logins.json, key4.db and
+  # cookies.sqlite are always excluded (SPEC 3.6). The OpenPGP secret keys
+  # can't be unlocked without key4.db, so they stay behind too.
+  - src: "%APPDATA%\\Thunderbird"
+    include: ["profiles.ini", "installs.ini", "Profiles/**"]
+    exclude:
+      - "Profiles/*/crashes"
+      - "Profiles/*/minidumps"
+      - "Profiles/*/datareporting"
+      - "Profiles/*/saved-telemetry-pings"
+      - "Profiles/*/storage/temporary"
+      - "Profiles/*/secring.gpg"
+      - "Profiles/*/encrypted-openpgp-passphrase.txt"
+      - "Profiles/*/parent.lock"
+requires_closed: ["thunderbird.exe"]
+os: [win10, win11]
+notes: >-
+  Mail, accounts, address books, calendars and filters move. Saved passwords
+  are not copied: Thunderbird asks for each account's password (or a new
+  sign-in) on the new PC. OpenPGP secret keys don't move either: export them
+  (Tools > OpenPGP Key Manager > File > Backup Secret Key) and import them on
+  the new PC. Mail kept in a folder outside the profile must be added as a
+  custom folder.

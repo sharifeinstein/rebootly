@@ -1,0 +1,18 @@
+schema: 1
+id: sticky-notes
+name: Microsoft Sticky Notes
+version: 1
+detect:
+  any:
+    - path: "%LOCALAPPDATA%\\Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState\\plum.sqlite"
+paths:
+  # The notes database with its SQLite sidecars (one consistent set while
+  # the app is closed), and notes converted from the Windows 7 app.
+  - src: "%LOCALAPPDATA%\\Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState"
+    include: ["plum.sqlite", "plum.sqlite-wal", "plum.sqlite-shm", "Legacy/**"]
+requires_closed: ["Microsoft.Notes.exe"]
+os: [win10, win11]
+notes: >-
+  Notes of the Sticky Notes app move. If you sign in to Sticky Notes, your
+  notes also sync through your Microsoft account. The newer Sticky Notes
+  inside OneNote keeps notes only in the cloud: sign in on the new PC.
