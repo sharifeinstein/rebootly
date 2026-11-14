@@ -3,7 +3,7 @@
 //! without them; with a passphrase, the untouched files and the full `.reg`
 //! also go into the encrypted bundle, at the same paths.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::extras::GeneratedFile;
 use super::manifest::{PackPathStatus, PackSecrets};
@@ -32,72 +32,123 @@ pub(super) struct PlainPath<'a> {
 /// (it becomes a sensitive job), write the stripped copy as a generated file.
 pub(super) fn redact_path(pp: &PackPath, at: &PlainPath<'_>, plan: &mut Plan, s: &mut PackSecrets) {
     for r in &pp.redact {
-        let (local, win, dest) = match r.file.as_deref() {
-            None => (
+        let targets: Vec<(PathBuf, String, String)> = match r.file.as_deref() {
+            None => vec![(
                 at.local.to_path_buf(),
                 at.win.to_owned(),
                 at.dest.to_owned(),
-            ),
-            Some(rel) => {
-                let rel = rel.replace('\\', "/");
-                if at.filter.is_some_and(|f| f.skip_file(&rel)) {
-                    continue;
-                }
-                let parts: Vec<String> = rel
-                    .split('/')
-                    .filter(|p| !p.is_empty())
-                    .map(String::from)
-                    .collect();
-                let (local, _) = crate::winpath::resolve_ci(at.local, &parts);
-                (
-                    local,
-                    format!(r"{}\{}", at.win.trim_end_matches('\\'), parts.join("\\")),
-                    format!("{}/{}", at.dest, parts.join("/")),
-                )
-            }
+            )],
+            Some(rel) => matching_files(at.local, &rel.replace('\\', "/"))
+                .into_iter()
+                .filter(|parts| !at.filter.is_some_and(|f| f.skip_file(&parts.join("/"))))
+                .map(|parts| {
+                    (
+                        parts.iter().fold(at.local.to_path_buf(), |p, n| p.join(n)),
+                        format!(r"{}\{}", at.win.trim_end_matches('\\'), parts.join("\\")),
+                        format!("{}/{}", at.dest, parts.join("/")),
+                    )
+                })
+                .collect(),
         };
-        let Ok(meta) = std::fs::metadata(&local) else {
-            continue;
-        };
-        if !meta.is_file() {
-            continue;
+        for (local, win, dest) in targets {
+            redact_file(r, at, &local, &win, dest, plan, s);
         }
-        let read = (meta.len() <= MAX_REDACT)
-            .then(|| std::fs::read(&local).ok())
-            .flatten();
-        let stripped = match &read {
-            Some(data) => match r.apply(data) {
-                (_, 0) => continue, // no saved passwords: copied as usual
-                (bytes, _) => Some(bytes),
-            },
-            None => {
-                plan.warnings.push(format!(
-                    "{}: couldn't read {win} to remove its saved passwords, so it is only \
-                     copied into the encrypted bundle",
-                    at.uname
-                ));
-                None
-            }
-        };
-        plan.sensitive_jobs.push(FolderJob {
-            user: at.uname.into(),
-            folder: format!("pack:{}", at.pack_id),
-            src_root: local.clone(),
-            win_root: win.clone(),
-            profile_rel: rel_components(&local, at.profile_dir),
-            dest_root: dest.clone(),
-            priority: PACK_PRIORITY,
-            filter: None,
-        });
-        if let Some(bytes) = stripped {
-            plan.generated.push(GeneratedFile {
-                dest: dest.clone(),
-                bytes,
-                source: format!("{win} (saved passwords removed)"),
-            });
-        }
-        s.files.push(dest);
     }
+}
+
+/// On-disk names of the files under `root` matching `rel` (`/`-separated;
+/// a segment with `*` or `?` matches names in that folder, case-insensitive;
+/// others are looked up case-insensitively). Sorted, links not followed.
+fn matching_files(root: &Path, rel: &str) -> Vec<Vec<String>> {
+    let mut found: Vec<(PathBuf, Vec<String>)> = vec![(root.to_path_buf(), Vec::new())];
+    for seg in rel.split('/').filter(|p| !p.is_empty()) {
+        let mut next = Vec::new();
+        for (dir, parts) in found {
+            if seg.contains(['*', '?']) {
+                let Ok(glob) = crate::packs::glob::Glob::new(seg) else {
+                    continue;
+                };
+                let Ok(rd) = std::fs::read_dir(&dir) else {
+                    continue;
+                };
+                let mut names: Vec<String> = rd
+                    .flatten()
+                    .filter(|e| e.file_type().is_ok_and(|t| !t.is_symlink()))
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .filter(|n| glob.matches_name(n))
+                    .collect();
+                names.sort();
+                for n in names {
+                    let mut p = parts.clone();
+                    p.push(n.clone());
+                    next.push((dir.join(n), p));
+                }
+            } else {
+                let (local, _) = crate::winpath::resolve_ci(&dir, &[seg.to_owned()]);
+                let name = local
+                    .file_name()
+                    .map_or_else(|| seg.to_owned(), |n| n.to_string_lossy().into_owned());
+                let mut p = parts;
+                p.push(name);
+                next.push((local, p));
+            }
+        }
+        found = next;
+    }
+    found.into_iter().map(|(_, p)| p).collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn redact_file(
+    r: &crate::packs::redact::Redact,
+    at: &PlainPath<'_>,
+    local: &Path,
+    win: &str,
+    dest: String,
+    plan: &mut Plan,
+    s: &mut PackSecrets,
+) {
+    let Ok(meta) = std::fs::metadata(local) else {
+        return;
+    };
+    if !meta.is_file() {
+        return;
+    }
+    let read = (meta.len() <= MAX_REDACT)
+        .then(|| std::fs::read(local).ok())
+        .flatten();
+    let stripped = match &read {
+        Some(data) => match r.apply(data) {
+            (_, 0) => return, // no saved passwords: copied as usual
+            (bytes, _) => Some(bytes),
+        },
+        None => {
+            plan.warnings.push(format!(
+                "{}: couldn't read {win} to remove its saved passwords, so it is only \
+                 copied into the encrypted bundle",
+                at.uname
+            ));
+            None
+        }
+    };
+    plan.sensitive_jobs.push(FolderJob {
+        user: at.uname.into(),
+        folder: format!("pack:{}", at.pack_id),
+        src_root: local.to_path_buf(),
+        win_root: win.to_owned(),
+        profile_rel: rel_components(local, at.profile_dir),
+        dest_root: dest.clone(),
+        priority: PACK_PRIORITY,
+        filter: None,
+    });
+    if let Some(bytes) = stripped {
+        plan.generated.push(GeneratedFile {
+            dest: dest.clone(),
+            bytes,
+            source: format!("{win} (saved passwords removed)"),
+        });
+    }
+    s.files.push(dest);
 }
 
 /// The pack's registry keys as `.reg` sections without `secret_values`;

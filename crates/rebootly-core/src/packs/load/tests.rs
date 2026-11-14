@@ -94,7 +94,7 @@ secret_values: ["Password"]
     let text = e.to_string();
     for needle in [
         "paths[0]: `redact` needs a plain copy",
-        "paths[1].redact[0]: needs `xml` or `ini`",
+        "paths[1].redact[0]: needs `xml`, `ini` or `json`",
         "paths[1].redact[0]: file",
         "paths[1].redact[1]: xml selector",
         "secret_values: the pack has no `registry` keys",

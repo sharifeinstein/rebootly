@@ -2,10 +2,13 @@
 //! The plain backup gets the file without them; with a passphrase, the
 //! untouched file also goes into the encrypted bundle (SPEC §6).
 //!
-//! Two kinds, both plain byte edits that keep everything else as it was:
+//! Three kinds, all plain byte edits that keep everything else as it was:
 //! - `xml`: remove whole elements, selected by name (`Pass`) or by name and
 //!   one attribute (`Setting[name=*password*]`, value is a glob).
 //! - `ini`: remove `key=value` lines whose key is listed (case-insensitive).
+//! - `json`: blank the string value of the listed keys (`redact_json`).
+//!
+//! `file` may use `*` / `?` within a segment (`basic/profiles/*/service.json`).
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +25,8 @@ pub struct Redact {
     pub xml: Vec<String>,
     #[serde(default)]
     pub ini: Vec<String>,
+    #[serde(default)]
+    pub json: Vec<String>,
 }
 
 /// `Name` or `Name[attr=glob]`.
@@ -62,8 +67,8 @@ impl Redact {
     /// Problems with this entry (empty = valid).
     pub fn problems(&self) -> Vec<String> {
         let mut errs = Vec::new();
-        if self.xml.is_empty() && self.ini.is_empty() {
-            errs.push("needs `xml` or `ini` entries".into());
+        if self.xml.is_empty() && self.ini.is_empty() && self.json.is_empty() {
+            errs.push("needs `xml`, `ini` or `json` entries".into());
         }
         if let Some(f) = &self.file {
             let f = f.replace('\\', "/");
@@ -73,6 +78,8 @@ impl Redact {
                 || f.split('/').any(|p| p == "..")
             {
                 errs.push(format!("file {f:?} must be a relative path without '..'"));
+            } else if f.contains("**") {
+                errs.push(format!("file {f:?}: only `*` and `?` within a segment"));
             }
         }
         for s in &self.xml {
@@ -87,6 +94,13 @@ impl Redact {
         {
             errs.push("ini keys must be non-empty and contain no '='".into());
         }
+        if self
+            .json
+            .iter()
+            .any(|k| k.is_empty() || k.contains(['"', '\\']))
+        {
+            errs.push("json keys must be non-empty and contain no quotes or backslashes".into());
+        }
         errs
     }
 
@@ -99,6 +113,9 @@ impl Redact {
         }
         if !self.ini.is_empty() {
             n += strip_ini(&mut out, &self.ini);
+        }
+        if !self.json.is_empty() {
+            n += super::redact_json::blank(&mut out, &self.json);
         }
         (out, n)
     }
@@ -224,6 +241,7 @@ mod tests {
             file: None,
             xml: xml.iter().map(|s| s.to_string()).collect(),
             ini: ini.iter().map(|s| s.to_string()).collect(),
+            json: Vec::new(),
         }
     }
 
@@ -279,5 +297,14 @@ mod tests {
         assert!(!x.problems().is_empty());
         x.file = Some("sub/sitemanager.xml".into());
         assert!(x.problems().is_empty());
+        x.file = Some("profiles/*/service.json".into());
+        assert!(x.problems().is_empty());
+        x.file = Some("**/service.json".into());
+        assert!(!x.problems().is_empty());
+        let mut j = r(&[], &[]);
+        j.json = vec!["key".into()];
+        assert!(j.problems().is_empty());
+        j.json = vec!["a\"b".into()];
+        assert!(!j.problems().is_empty());
     }
 }

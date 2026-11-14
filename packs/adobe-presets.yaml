@@ -1,0 +1,39 @@
+schema: 1
+id: adobe-presets
+name: Adobe presets (Lightroom Classic, Camera Raw, Photoshop)
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\Adobe\\CameraRaw\\Settings"
+    - path: "%APPDATA%\\Adobe\\Lightroom"
+    - uninstall_name: "Adobe Photoshop*"
+    - uninstall_name: "Adobe Lightroom*"
+paths:
+  - src: "%APPDATA%\\Adobe"
+    include:
+      # Develop presets (.xmp), camera and lens profiles, curves: shared by
+      # Lightroom Classic and Camera Raw.
+      - "CameraRaw/Settings/**"
+      - "CameraRaw/CameraProfiles/**"
+      - "CameraRaw/LensProfiles/**"
+      - "CameraRaw/Curves/**"
+      # Lightroom Classic: export/import/metadata presets, filename
+      # templates, watermarks, keyword sets, plug-ins, preferences.
+      - "Lightroom/**"
+      # Photoshop, per version: user presets (brushes, swatches, ...) and
+      # the settings folder (workspaces, actions, shortcuts, preferences).
+      - "Adobe Photoshop */Presets/**"
+      - "Adobe Photoshop */Adobe Photoshop * Settings/**"
+    exclude:
+      - "**/Logs/**"
+      - "**/web-cache-temp/**"
+    rewrite: true            # Lightroom preferences name the catalog
+requires_closed: ["Lightroom.exe", "Photoshop.exe"]
+os: [win10, win11]
+notes: >-
+  Presets, profiles, Lightroom templates and Photoshop settings move.
+  Install the apps from Creative Cloud and sign in. Lightroom catalogs and
+  photos are in Pictures (moved with it); if a catalog is elsewhere, add
+  that folder. A newer Photoshop than the old one offers Edit > Presets >
+  Migrate Presets on first start. If Photoshop misbehaves after the move,
+  reset its preferences (hold Alt+Ctrl+Shift while it starts).

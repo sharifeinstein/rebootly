@@ -56,6 +56,12 @@ pub const BUILTIN: &[(&str, &str)] = &[
         "jetbrains.yaml",
         include_str!("../../../../packs/jetbrains.yaml"),
     ),
+    ("obs.yaml", include_str!("../../../../packs/obs.yaml")),
+    (
+        "adobe-presets.yaml",
+        include_str!("../../../../packs/adobe-presets.yaml"),
+    ),
+    ("steam.yaml", include_str!("../../../../packs/steam.yaml")),
     (
         "windows-shell.yaml",
         include_str!("../../../../packs/windows-shell.yaml"),

@@ -1,0 +1,29 @@
+schema: 1
+id: steam
+name: Steam
+version: 1
+detect:
+  any:
+    # Per Windows user: only accounts that ran Steam have this key. The
+    # Steam folder itself is shared by all users of the PC.
+    - registry: "HKCU\\Software\\Valve\\Steam"
+winget_id: Valve.Steam
+paths:
+  # Per Steam account: library collections, non-Steam game shortcuts and
+  # artwork, screenshots (760), and saves of games without Steam Cloud.
+  # Login data (config\config.vdf, loginusers.vdf) is not copied.
+  - src: "%ProgramFiles(x86)%\\Steam\\userdata"
+  # Installed games (listed for the checklist; the games themselves are
+  # downloaded again or re-linked, never copied).
+  - src: "%ProgramFiles(x86)%\\Steam\\steamapps\\common"
+    mode: list_only
+requires_closed: ["steam.exe"]
+os: [win10, win11]
+notes: >-
+  Collections, non-Steam games, screenshots and local saves move. Install
+  Steam and sign in (Steam Guard asks to confirm the new PC). Games are not
+  copied: install them again, or, if your games are on another drive that
+  comes along (or a copied SteamLibrary folder), add that folder in
+  Settings > Storage and Steam uses the games already there. Steam
+  installed somewhere other than Program Files (x86): add its userdata
+  folder as a custom folder.

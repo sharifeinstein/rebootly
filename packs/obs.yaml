@@ -1,0 +1,48 @@
+schema: 1
+id: obs
+name: OBS Studio
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\obs-studio\\global.ini"
+    - path: "%APPDATA%\\obs-studio\\basic"
+    - uninstall_name: "OBS Studio*"
+winget_id: OBSProject.OBSStudio
+paths:
+  # Scene collections, profiles (stream, output and encoder settings),
+  # app settings and plugin settings. Logs, crash dumps, updates and the
+  # browser source's web cache (obs-browser) stay behind; rtmp-services is
+  # a downloaded list that OBS fetches again.
+  - src: "%APPDATA%\\obs-studio"
+    include:
+      - "global.ini"
+      - "user.ini"
+      - "basic/scenes/*.json"
+      - "basic/profiles/**"
+      - "plugin_config/**"
+    exclude:
+      - "plugin_config/obs-browser/**"
+      - "plugin_config/rtmp-services/**"
+    rewrite: true            # media, image and browser-source file paths
+    # Stream keys, connected-account tokens and the WebSocket server
+    # password are blanked or removed in the plain copy; with a passphrase
+    # the whole files also go into the encrypted bundle.
+    redact:
+      - file: "basic/profiles/*/service.json"
+        json: ["key", "password", "bearer_token"]
+      - file: "basic/profiles/*/basic.ini"
+        ini: ["Token", "RefreshToken"]
+      - file: "plugin_config/obs-websocket/config.json"
+        json: ["server_password"]
+      - file: "global.ini"
+        ini: ["ServerPassword"]
+requires_closed: ["obs64.exe"]
+os: [win10, win11]
+notes: >-
+  Scenes, sources, profiles and settings move. The stream key and the
+  sign-in to connected accounts (Twitch, YouTube, ...) move only in the
+  encrypted bundle (backup with a passphrase); otherwise paste the key again
+  in Settings > Stream, or connect the account again. The WebSocket
+  password is then new as well. Plugins must be installed again, and media
+  files used in scenes must be in a backed-up folder (Videos, Pictures, ...)
+  or added as a custom folder.
