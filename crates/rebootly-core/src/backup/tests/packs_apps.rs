@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn write(root: &Path, rel: &str, body: &[u8]) {
+pub(super) fn write(root: &Path, rel: &str, body: &[u8]) {
     let p = root.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(p, body).unwrap();
@@ -10,7 +10,7 @@ fn write(root: &Path, rel: &str, body: &[u8]) {
 
 /// Plan and run a backup of Alice with every built-in pack; returns the
 /// job folder of Alice's copy of `pack` and the manifest.
-fn backup_pack(
+pub(super) fn backup_pack(
     files: &[(&str, &[u8])],
     pack: &str,
 ) -> (tempfile::TempDir, PathBuf, manifest::Manifest) {

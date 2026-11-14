@@ -1,0 +1,47 @@
+schema: 1
+id: office
+name: Microsoft Office (templates, dictionaries, AutoCorrect, ribbon)
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\Microsoft\\Templates\\Normal.dotm"
+    - path: "%APPDATA%\\Microsoft\\UProof"
+    - uninstall_name: "Microsoft 365*"
+    - uninstall_name: "Microsoft Office*"
+paths:
+  # Normal.dotm, NormalEmail.dotm, the user's own templates and themes.
+  # LiveContent is Office's download cache; ~$ files are lock files.
+  - src: "%APPDATA%\\Microsoft\\Templates"
+    exclude: ["LiveContent/**", "**/~$*"]
+  # Custom dictionaries (CUSTOM.DIC and others) and exclusion lists.
+  - src: "%APPDATA%\\Microsoft\\UProof"
+    include: ["*.dic", "*.lex", "*.exc"]
+  # AutoCorrect lists, one per language (MSO<locale>.acl).
+  - src: "%APPDATA%\\Microsoft\\Office"
+    include: ["*.acl"]
+  # Ribbon and Quick Access Toolbar (classic and simplified ribbon).
+  - src: "%LOCALAPPDATA%\\Microsoft\\Office"
+    include: ["*.officeUI", "*.officeSL"]
+  # Personal macro workbook, Word start-up add-ins, Quick Parts, add-ins.
+  - src: "%APPDATA%\\Microsoft\\Excel\\XLSTART"
+  - src: "%APPDATA%\\Microsoft\\Word\\STARTUP"
+  - src: "%APPDATA%\\Microsoft\\Document Building Blocks"
+  - src: "%APPDATA%\\Microsoft\\AddIns"
+requires_closed:
+  - "WINWORD.EXE"
+  - "EXCEL.EXE"
+  - "POWERPNT.EXE"
+  - "OUTLOOK.EXE"
+  - "MSACCESS.EXE"
+  - "MSPUB.EXE"
+os: [win10, win11]
+notes: >-
+  Templates, custom dictionaries, AutoCorrect entries, ribbon and toolbar
+  changes, the personal macro workbook and Quick Parts move. Office itself
+  and its licence don't: install it from your Microsoft account and sign in
+  (RoamingCustom.dic and other cloud settings then come back by themselves).
+  Templates in Documents\Custom Office Templates come with Documents. A
+  dictionary kept in another folder (Options > Proofing > Custom
+  Dictionaries shows where) must be added as a custom folder; any dictionary
+  other than CUSTOM.DIC must be added again in that dialog. The Microsoft
+  Store edition of Office uses other folders.

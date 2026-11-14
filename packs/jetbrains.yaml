@@ -1,0 +1,54 @@
+schema: 1
+id: jetbrains
+name: JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, ...)
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\JetBrains"
+    - uninstall_name: "IntelliJ IDEA*"
+    - uninstall_name: "PyCharm*"
+    - uninstall_name: "WebStorm*"
+    - uninstall_name: "PhpStorm*"
+    - uninstall_name: "Rider*"
+    - uninstall_name: "CLion*"
+    - uninstall_name: "GoLand*"
+    - uninstall_name: "RubyMine*"
+    - uninstall_name: "DataGrip*"
+    - uninstall_name: "RustRover*"
+paths:
+  # One configuration folder per product and version
+  # (%APPDATA%\JetBrains\<product><version>). Settings only: plugins are
+  # reinstalled, caches and logs live in %LOCALAPPDATA% and stay behind,
+  # and the licence key, the password database (c.kdbx, c.pwd) and the
+  # IDE's port/lock files sit at the folder's top level, which isn't copied.
+  - src: "%APPDATA%\\JetBrains"
+    include:
+      - "*/options/**"
+      - "*/keymaps/**"
+      - "*/codestyles/**"
+      - "*/colors/**"
+      - "*/templates/**"
+      - "*/fileTemplates/**"
+      - "*/inspection/**"
+      - "*/tools/**"
+      - "*/quicklists/**"
+      - "*/scratches/**"
+      - "*/consoles/**"
+      - "*/*.vmoptions"
+      - "*/disabled_plugins.txt"
+    rewrite: true
+  # Which products and versions were set up (shown in the checklist).
+  - src: "%APPDATA%\\JetBrains"
+    mode: list_only
+requires_closed: ["idea64.exe", "pycharm64.exe", "webstorm64.exe", "phpstorm64.exe", "rider64.exe", "clion64.exe", "goland64.exe", "rubymine64.exe", "datagrip64.exe", "rustrover64.exe"]
+os: [win10, win11]
+notes: >-
+  Keymaps, code styles, colour schemes, live and file templates,
+  inspection profiles, external tools, scratch files and other settings
+  move, per product and version. Install the same IDEs (or newer ones:
+  on first start a newer version offers to import the old settings), then
+  sign in to your JetBrains account to activate it. Plugins are not copied:
+  reinstall them from Settings > Plugins, or turn on Backup and Sync.
+  Saved passwords (database, VCS, deployment) must be entered again.
+  Android Studio keeps its settings elsewhere (%APPDATA%\Google) and is
+  not covered.

@@ -289,6 +289,7 @@ mod live_like;
 mod packs;
 mod packs_apps;
 mod packs_secrets;
+mod packs_work;
 mod sensitive;
 mod snapshot;
 mod system;

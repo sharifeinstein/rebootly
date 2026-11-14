@@ -48,6 +48,15 @@ pub const BUILTIN: &[(&str, &str)] = &[
     ("putty.yaml", include_str!("../../../../packs/putty.yaml")),
     ("winscp.yaml", include_str!("../../../../packs/winscp.yaml")),
     (
+        "outlook.yaml",
+        include_str!("../../../../packs/outlook.yaml"),
+    ),
+    ("office.yaml", include_str!("../../../../packs/office.yaml")),
+    (
+        "jetbrains.yaml",
+        include_str!("../../../../packs/jetbrains.yaml"),
+    ),
+    (
         "windows-shell.yaml",
         include_str!("../../../../packs/windows-shell.yaml"),
     ),
