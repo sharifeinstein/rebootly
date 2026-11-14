@@ -1,0 +1,58 @@
+schema: 1
+id: minecraft
+name: Minecraft
+version: 1
+detect:
+  any:
+    - path: "%APPDATA%\\.minecraft"
+    - path: "%APPDATA%\\Minecraft Bedrock\\Users"
+    - path: "%LOCALAPPDATA%\\Packages\\Microsoft.MinecraftUWP_8wekyb3d8bbwe\\LocalState\\games\\com.mojang"
+winget_id: Mojang.MinecraftLauncher
+paths:
+  # Java Edition: worlds, screenshots, packs, mods and their settings, game
+  # options, the multiplayer server list and the launcher's installations.
+  # versions, libraries, assets and runtime are downloaded again; logs and
+  # crash reports aren't worth moving. The launcher's sign-in files
+  # (launcher_accounts*.json, launcher_msa_credentials*) are never copied.
+  - src: "%APPDATA%\\.minecraft"
+    include:
+      - "saves/**"
+      - "screenshots/**"
+      - "resourcepacks/**"
+      - "shaderpacks/**"
+      - "mods/**"
+      - "config/**"
+      - "options.txt"
+      - "optionsof.txt"
+      - "optionsshaders.txt"
+      - "servers.dat"
+      - "launcher_profiles.json"
+      - "launcher_profiles_microsoft_store.json"
+    redact:
+      # Older launchers kept sign-in tokens in the profiles file.
+      - file: "launcher_profiles.json"
+        json: ["accessToken", "clientToken"]
+      - file: "launcher_profiles_microsoft_store.json"
+        json: ["accessToken", "clientToken"]
+  # Bedrock Edition since 1.21.120 (GDK build): Users\<Xbox user id> holds
+  # worlds and settings, Users\Shared the add-on packs. Marketplace content
+  # is downloaded again.
+  - src: "%APPDATA%\\Minecraft Bedrock\\Users"
+    exclude: ["**/premium_cache"]
+  # Bedrock Edition before the GDK build (Microsoft Store app).
+  - src: "%LOCALAPPDATA%\\Packages\\Microsoft.MinecraftUWP_8wekyb3d8bbwe\\LocalState\\games\\com.mojang"
+    exclude: ["premium_cache"]
+requires_closed: ["Minecraft.exe", "MinecraftLauncher.exe", "Minecraft.Windows.exe"]
+os: [win10, win11]
+notes: >-
+  Worlds, screenshots, resource and shader packs, mods and settings move.
+  Install the Minecraft Launcher and sign in with the same Microsoft
+  account: Java versions are downloaded again on first start. Bedrock
+  worlds are kept per Xbox account (the numbered folder under
+  %APPDATA%\Minecraft Bedrock\Users), so sign in with the same account;
+  Realms and Marketplace purchases come back from the account. Worlds from
+  the older Store version (Packages\Microsoft.MinecraftUWP_…\com.mojang)
+  that don't show up: copy its minecraftWorlds folder into
+  %APPDATA%\Minecraft Bedrock\Users\<number>\games\com.mojang with the game
+  closed. Other launchers (Prism, CurseForge, Modrinth) keep their own
+  instance folders: add them as custom folders.

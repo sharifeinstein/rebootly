@@ -1,0 +1,26 @@
+schema: 1
+id: my-games
+name: PC game saves and settings
+version: 1
+detect:
+  any:
+    - path: "%KF:Documents%\\My Games"
+paths:
+  # Both folders are copied with the user's folders (Documents, Saved
+  # Games); the pack only lists the games in them for the checklist.
+  - src: "%KF:Documents%\\My Games"
+    mode: list_only
+    exclude: ["desktop.ini"]
+  - src: "%KF:SavedGames%"
+    mode: list_only
+    exclude: ["desktop.ini"]
+os: [win10, win11]
+notes: >-
+  Saves and settings of these games came with Documents\My Games:
+  {each:My Games}; and with Saved Games: {each:SavedGames}. Install the
+  games again (Steam, Epic, GOG, Xbox app) and start each once: most pick
+  up the old saves. Games with cloud saves restore them from the account.
+  Some games keep saves elsewhere, often in AppData\LocalLow (Unity games)
+  or AppData\Local\<studio>, which Rebootly does not copy: if a game's save
+  is missing, find its folder on the old PC (PCGamingWiki lists each
+  game's save location) and add it as a custom folder.

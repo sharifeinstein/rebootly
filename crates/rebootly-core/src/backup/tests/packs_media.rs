@@ -187,5 +187,7 @@ fn steam_copies_userdata_for_users_who_ran_it_and_lists_games() {
         .find(|p| p.status == PackPathStatus::Listed)
         .unwrap();
     assert_eq!(games.listed, ["Hades", "Portal 2"]);
+    let notes = r.notes.as_deref().unwrap();
+    assert!(notes.starts_with("Games installed on the old PC: Hades, Portal 2."));
     assert_eq!(r.winget_id.as_deref(), Some("Valve.Steam"));
 }

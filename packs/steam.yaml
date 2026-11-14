@@ -20,10 +20,10 @@ paths:
 requires_closed: ["steam.exe"]
 os: [win10, win11]
 notes: >-
-  Collections, non-Steam games, screenshots and local saves move. Install
-  Steam and sign in (Steam Guard asks to confirm the new PC). Games are not
-  copied: install them again, or, if your games are on another drive that
-  comes along (or a copied SteamLibrary folder), add that folder in
-  Settings > Storage and Steam uses the games already there. Steam
-  installed somewhere other than Program Files (x86): add its userdata
-  folder as a custom folder.
+  Games installed on the old PC: {each:common}. Collections, non-Steam
+  games, screenshots and local saves move. Install Steam and sign in
+  (Steam Guard asks to confirm the new PC). Games are not copied: install
+  them again, or, if your games are on another drive that comes along (or
+  a copied SteamLibrary folder), add that folder in Settings > Storage and
+  Steam uses the games already there. Steam installed somewhere other than
+  Program Files (x86): add its userdata folder as a custom folder.

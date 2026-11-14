@@ -153,7 +153,12 @@ pub fn plan_user_packs(
                 }
             } else if pp.mode == Mode::ListOnly {
                 prec.status = PackPathStatus::Listed;
+                let (include, exclude) = &cp.filters[i];
                 prec.listed = list_names(&local);
+                prec.listed.retain(|n| {
+                    (include.is_empty() || include.iter().any(|g| g.matches_name(n)))
+                        && !exclude.iter().any(|g| g.matches_name(n))
+                });
             } else if let Some(first) = claim(seen, &local, format!("{uname}/{}", pack.id)) {
                 prec.status = PackPathStatus::Duplicate;
                 plan.warnings.push(format!(
@@ -226,6 +231,14 @@ pub fn plan_user_packs(
                 )
             });
         if has_data {
+            use crate::packs::listing::fill;
+            rec.notes = pack.notes.as_deref().map(|n| fill(n, &rec.paths));
+            if let Some(step) = &pack.backup_step {
+                plan.manual_steps.push(ManualStep {
+                    title: format!("{} ({uname}): before you leave the old PC", pack.name),
+                    detail: fill(step, &rec.paths),
+                });
+            }
             plan.packs.push(rec);
         }
     }

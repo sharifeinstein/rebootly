@@ -36,8 +36,15 @@ pub struct Pack {
     /// Empty = any Windows version.
     #[serde(default)]
     pub os: Vec<OsTag>,
+    /// Shown on the restore checklist. `{each:<leaf>}` is replaced by the
+    /// names the `list_only` path ending in `<leaf>` listed (backup time).
     #[serde(default)]
     pub notes: Option<String>,
+    /// A step for the backup's checklist (things to do on the old PC while
+    /// it still runs), for each user the pack is kept for; `{each:…}` as in
+    /// `notes`.
+    #[serde(default)]
+    pub backup_step: Option<String>,
     #[serde(default)]
     pub post_restore: Vec<PostRestore>,
 }
@@ -230,9 +237,9 @@ impl Pack {
                     p.src
                 ));
             }
-            if p.mode == Mode::ListOnly && (!p.include.is_empty() || p.rewrite) {
+            if p.mode == Mode::ListOnly && p.rewrite {
                 errs.push(format!(
-                    "paths[{i}]: `include` and `rewrite` have no effect with mode: list_only"
+                    "paths[{i}]: `rewrite` has no effect with mode: list_only"
                 ));
             }
             if !p.redact.is_empty() && (p.sensitive || p.mode == Mode::ListOnly) {
@@ -263,6 +270,27 @@ impl Pack {
                 errs.push(format!(
                     "registry: {k:?} must be an HKCU\\ key (HKLM is not supported in packs)"
                 ));
+            }
+        }
+        let leaves: Vec<&str> = self
+            .paths
+            .iter()
+            .filter(|p| p.mode == Mode::ListOnly)
+            .map(|p| super::listing::leaf(&p.src))
+            .collect();
+        let texts = self
+            .notes
+            .iter()
+            .map(|t| ("notes", t))
+            .chain(self.backup_step.iter().map(|t| ("backup_step", t)))
+            .chain(self.post_restore.iter().map(|r| ("post_restore", &r.run)));
+        for (what, text) in texts {
+            for var in super::listing::placeholders(text) {
+                if !leaves.iter().any(|l| l.eq_ignore_ascii_case(var)) {
+                    errs.push(format!(
+                        "{what}: {{each:{var}}} names no list_only path ending in {var:?}"
+                    ));
+                }
             }
         }
         if !self.secret_values.is_empty() && self.registry.is_empty() {

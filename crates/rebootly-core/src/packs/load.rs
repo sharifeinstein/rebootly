@@ -63,6 +63,18 @@ pub const BUILTIN: &[(&str, &str)] = &[
     ),
     ("steam.yaml", include_str!("../../../../packs/steam.yaml")),
     (
+        "minecraft.yaml",
+        include_str!("../../../../packs/minecraft.yaml"),
+    ),
+    (
+        "my-games.yaml",
+        include_str!("../../../../packs/my-games.yaml"),
+    ),
+    (
+        "quickbooks.yaml",
+        include_str!("../../../../packs/quickbooks.yaml"),
+    ),
+    (
         "windows-shell.yaml",
         include_str!("../../../../packs/windows-shell.yaml"),
     ),

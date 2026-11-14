@@ -1,0 +1,41 @@
+schema: 1
+id: quickbooks
+name: QuickBooks Desktop
+version: 1
+detect:
+  any:
+    # Per user: QuickBooks writes its logs here for each user who runs it
+    # (the company files folder is shared, so it would match every user).
+    - path: "%LOCALAPPDATA%\\Intuit\\QuickBooks"
+paths:
+  # Company files (.qbw), backups (.qbb) and portable copies (.qbm) in the
+  # default folder are listed, not copied: a company file should move as a
+  # QuickBooks backup (it may be open by the database server, and its
+  # .tlg/.nd files must match it). Full mode copies Users\Public anyway.
+  - src: "%PUBLIC%\\Documents\\Intuit\\QuickBooks\\Company Files"
+    mode: list_only
+    include: ["*.qbw", "*.qbb", "*.qbm"]
+  # One folder per QuickBooks version used (e.g. 34.0 = 2024); listed in
+  # the manifest only.
+  - src: "%LOCALAPPDATA%\\Intuit\\QuickBooks\\log"
+    mode: list_only
+requires_closed: ["QBW32.EXE", "QBW.EXE"]
+os: [win10, win11]
+backup_step: >-
+  QuickBooks company files are not copied by the Quick backup. Company
+  files in the default folder (Public Documents\Intuit\QuickBooks\Company
+  Files): {each:Company Files}. On the old PC, open each company file and
+  use File > Back Up Company > Create Local Backup, saving the .qbb onto
+  the backup drive (or into Documents and run the backup again). Single
+  user with QuickBooks 2018 or newer: File > Utilities > Move QuickBooks to
+  another computer moves the program and up to three company files. Company
+  files kept in Documents or on the Desktop were copied with those folders;
+  files on a server stay where they are. Note the licence and product
+  numbers (F2 in QuickBooks, or your Intuit account).
+notes: >-
+  Install QuickBooks Desktop (from your Intuit account) with the licence
+  and product numbers, then File > Open or Restore Company > Restore a
+  backup copy for each .qbb (a .qbm: Restore a portable file). Company
+  files on the old PC: {each:Company Files}. Sign in again to payroll, bank
+  feeds and payments, download the latest payroll tax table, and set up
+  Intuit Data Protect again if you used it.
