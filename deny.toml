@@ -1,0 +1,66 @@
+# cargo-deny: dependency licences, security advisories, duplicate or
+# unwanted crates, and where crates come from. Run `cargo deny check`
+# (CI does). The licence list matches about.toml (cargo-about), which
+# writes THIRD-PARTY-LICENSES.html for the release.
+
+[graph]
+# What Rebootly ships for Windows (x64, arm64). The Linux build is only the
+# CLI; check it with
+#   cargo deny --target x86_64-unknown-linux-musl --exclude rebootly-gui check
+# (the GUI's Linux-only accessibility crates, zbus/atspi, never ship).
+targets = ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]
+all-features = true
+
+[advisories]
+# RustSec advisories: vulnerable and yanked crates fail; unmaintained and
+# unsound ones fail too unless listed in `ignore` with a reason.
+yanked = "deny"
+ignore = [
+    # Timing side channels in crypto-bigint 0.5 (fixed in 0.7.6). It reaches
+    # us through age 0.12 -> hpke -> p256 (P-256 / plugin recipients);
+    # Rebootly only uses age's scrypt passphrase recipient, which never
+    # calls it. Drop this when age moves to a fixed crypto-bigint.
+    { id = "RUSTSEC-2026-0387", reason = "P-256 code in age not used (scrypt only)" },
+    # Unmaintained compile-time macro crates, no known flaw: paste via
+    # ratatui 0.29 (gone after a ratatui 0.30 upgrade), basic-toml via age's
+    # i18n-embed (reads i18n.toml at build time).
+    { id = "RUSTSEC-2024-0436", reason = "paste: build-time macro via ratatui 0.29" },
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml: build-time config via age i18n" },
+]
+
+[licenses]
+# All compatible with distributing Apache-2.0 binaries.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+]
+confidence-threshold = 0.93
+# The list is shared with about.toml; not every licence is in use.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Rebootly's own crates (publish = false) are Apache-2.0 anyway.
+ignore = true
+
+[bans]
+# Several versions of one crate: shown, not fatal (common with windows-sys).
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

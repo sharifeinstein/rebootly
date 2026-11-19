@@ -18,6 +18,19 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  deny:
+    # Licences, RustSec advisories, bans and sources (deny.toml).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --target x86_64-unknown-linux-musl --exclude rebootly-gui
+          command: check
+
   windows-arm64-check:
     runs-on: windows-latest
     steps:
