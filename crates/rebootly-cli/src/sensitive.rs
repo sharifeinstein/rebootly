@@ -7,7 +7,7 @@ use rebootly_core::backup::sensitive::{self, Passphrase};
 
 pub const ENV: &str = "REBOOTLY_PASSPHRASE";
 
-/// From `file`, else `$REBOOTLY_PASSPHRASE`, else a hidden prompt (asked
+/// From `file`, else `$REBOOTLY_PASSPHRASE`, else a prompt showing dots (asked
 /// twice when `confirm`). Never echoed or logged.
 pub fn passphrase(file: Option<&Path>, confirm: bool) -> anyhow::Result<Passphrase> {
     let raw = if let Some(f) = file {
@@ -17,19 +17,26 @@ pub fn passphrase(file: Option<&Path>, confirm: bool) -> anyhow::Result<Passphra
     } else if let Ok(s) = std::env::var(ENV) {
         s
     } else {
-        let a = rpassword::prompt_password("Passphrase for the sensitive bundle: ")?;
+        let a = ask(
+            "Passphrase",
+            "Passphrase for the sensitive bundle: type or paste it (shown as dots). \
+             Enter when done, Esc to cancel.",
+        )?;
         // Say what arrived (length only), so "typed too few" can be told
         // apart from a console that loses input (e.g. pasting into a VM).
         let n = a.chars().count();
         if n < rebootly_core::backup::sensitive::MIN_PASSPHRASE {
             bail!(
                 "the passphrase must be at least {} characters (the prompt received {n}; \
-                 if you pasted it, type it instead, or use --passphrase-file)",
+                 --passphrase-file reads it from a file instead)",
                 rebootly_core::backup::sensitive::MIN_PASSPHRASE
             );
         }
         if confirm {
-            let b = rpassword::prompt_password("Same passphrase again: ")?;
+            let b = ask(
+                "Passphrase again",
+                "The same passphrase again, to check it.",
+            )?;
             if a != b {
                 bail!("the passphrases don't match");
             }
@@ -41,6 +48,14 @@ pub fn passphrase(file: Option<&Path>, confirm: bool) -> anyhow::Result<Passphra
         a
     };
     Passphrase::new(raw).map_err(anyhow::Error::msg)
+}
+
+/// One prompt; Esc / Ctrl+C is an error, so nothing starts.
+fn ask(label: &'static str, intro: &str) -> anyhow::Result<String> {
+    match rebootly_tui::prompt::passphrase(label, intro)? {
+        Some(s) => Ok(s),
+        None => bail!("cancelled; no passphrase was entered"),
+    }
 }
 
 #[derive(clap::Subcommand)]

@@ -1,5 +1,6 @@
-//! One-line prompts for `rebootly-cli open` (no full screen): the recovery
-//! key (shown as typed, grouped) and a BitLocker password (dots). Ctrl+V /
+//! One-line prompts for the CLI (no full screen): the recovery key (shown
+//! as typed, grouped), a BitLocker password and the sensitive-bundle
+//! passphrase (dots). Ctrl+V /
 //! Shift+Insert paste from the clipboard. After Enter the line is rewritten
 //! ("entered"), so nothing secret is left in the console's history or in
 //! output pasted elsewhere. Without a terminal (piped input) one line is
@@ -39,7 +40,7 @@ pub trait LineEdit {
     fn render(&self) -> String;
     /// What stays on screen after Enter.
     fn entered(&self) -> String;
-    fn cancelled(&self) -> &'static str;
+    fn cancelled(&self) -> String;
 }
 
 /// Keys every line treats the same: releases (Windows reports them too)
@@ -84,6 +85,14 @@ pub fn password() -> io::Result<Option<String>> {
     )
 }
 
+/// Ask for the sensitive-bundle passphrase on a line titled `label`
+/// (at most 16 characters), after `intro`; `None` if cancelled. Piped
+/// input: one line, without its line break.
+pub fn passphrase(label: &'static str, intro: &str) -> io::Result<Option<String>> {
+    let got = run(PasswordLine::passphrase(label), intro)?;
+    Ok(got.map(|s| s.trim_end_matches(['\r', '\n']).to_owned()))
+}
+
 fn run(mut line: impl LineEdit, intro: &str) -> io::Result<Option<String>> {
     let mut err = io::stderr();
     if !io::stdin().is_terminal() {
@@ -126,7 +135,7 @@ fn run(mut line: impl LineEdit, intro: &str) -> io::Result<Option<String>> {
                 return Ok(Some(secret));
             }
             Step::Cancel => {
-                show(&mut err, line.cancelled())?;
+                show(&mut err, &line.cancelled())?;
                 execute!(err, Print("\r\n"))?;
                 return Ok(None);
             }

@@ -68,8 +68,8 @@ impl LineEdit for KeyLine {
         "Key: entered (48 digits)".into()
     }
 
-    fn cancelled(&self) -> &'static str {
-        "Key: cancelled"
+    fn cancelled(&self) -> String {
+        "Key: cancelled".into()
     }
 }
 

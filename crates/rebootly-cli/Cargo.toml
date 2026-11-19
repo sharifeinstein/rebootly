@@ -18,7 +18,6 @@ rebootly-win.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
-rpassword = "7"
 rebootly-tui.workspace = true
 
 [target.'cfg(not(windows))'.dependencies]
