@@ -22,7 +22,7 @@ jobs:
     # x86-64 Linux), the same build as rescue/alpine/build.sh.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
@@ -40,7 +40,7 @@ jobs:
             echo "::error::$bin needs shared libraries"; readelf -d "$bin"; exit 1
           fi
           "$bin" --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-x64
           path: target/x86_64-unknown-linux-musl/release/rebootly-cli
@@ -54,7 +54,7 @@ jobs:
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
@@ -68,7 +68,7 @@ jobs:
           }
           "version=$v" >> $env:GITHUB_OUTPUT
           "prerelease=$($env:TAG.Contains('-'))".ToLower() >> $env:GITHUB_OUTPUT
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: linux-x64
           path: dist/linux-x64

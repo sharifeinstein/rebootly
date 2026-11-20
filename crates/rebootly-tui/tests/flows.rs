@@ -13,7 +13,10 @@ use rebootly_tui::ui::{ScriptUi, ch, k, text};
 use rebootly_tui::{Drive, Platform, first_screen};
 
 fn fixture() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/win11-basic")
+    // The workspace root, without "..": the Rescue screen shows this path and a
+    // long checkout path (CI runners) would push the fixture's name off it.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
+    root.join("tests/fixtures/win11-basic")
 }
 
 struct Fake {

@@ -20,7 +20,10 @@ const PASSWORD: &str = "Sommer 2026!";
 const KEY: &str = "000000-000011-123453-720885-111111-222222-333333-444444";
 
 fn fixture() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/win11-basic")
+    // The workspace root, without "..": the Rescue screen shows this path and a
+    // long checkout path (CI runners) would push the fixture's name off it.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
+    root.join("tests/fixtures/win11-basic")
 }
 
 #[derive(Default)]
