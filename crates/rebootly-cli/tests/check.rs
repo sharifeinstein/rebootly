@@ -99,10 +99,12 @@ fn verify_then_compare_a_simulated_restore() {
 
 #[test]
 fn a_bad_path_is_named_once() {
+    // A folder named manifest.json: a read error on Linux (EISDIR) and on
+    // Windows (access denied). A path through a file isn't: Windows calls
+    // that "not found".
     let t = tempfile::tempdir().unwrap();
-    let file = t.path().join("not-a-folder");
-    std::fs::write(&file, b"x").unwrap();
-    let (code, _, err) = rebootly(&["verify", file.to_str().unwrap()]);
+    std::fs::create_dir(t.path().join("manifest.json")).unwrap();
+    let (code, _, err) = rebootly(&["verify", t.path().to_str().unwrap()]);
     assert_eq!(code, 1);
     assert!(
         err.contains("can't read") && err.contains("manifest.json"),
