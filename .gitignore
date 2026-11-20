@@ -3,3 +3,6 @@
 # Sync bundle used to mirror the tree from the Claude workspace.
 /.rebootly-sync.tar
 /dist
+# Sync bundles (git bundle between the Claude workspace and D:).
+/.rb-update.bundle
+/.rb-full.bundle

@@ -1,0 +1,101 @@
+# Release: push a tag v<version> (Cargo.toml's version, optionally with a
+# suffix such as -beta.1) and this builds the Windows zip and the stick zip
+# with scripts/package-release.ps1, and puts them in a DRAFT GitHub release.
+# The owner reviews the draft, attaches the rescue ISOs if wanted (they need
+# Docker / the Windows ADK and aren't built here), and publishes it.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux-cli:
+    # Static rebootly-cli for the stick's bin\linux-x64 (start.sh on any
+    # x86-64 Linux), the same build as rescue/alpine/build.sh.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked -p rebootly-cli --target x86_64-unknown-linux-musl
+      - name: Check it is static
+        run: |
+          bin=target/x86_64-unknown-linux-musl/release/rebootly-cli
+          if readelf -d "$bin" | grep -q NEEDED; then
+            echo "::error::$bin needs shared libraries"; readelf -d "$bin"; exit 1
+          fi
+          "$bin" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: target/x86_64-unknown-linux-musl/release/rebootly-cli
+          if-no-files-found: error
+
+  windows:
+    needs: linux-cli
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Tag matches Cargo.toml
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($env:TAG -ne "v$v" -and -not $env:TAG.StartsWith("v$v-")) {
+            throw "Tag $env:TAG doesn't match Cargo.toml version $v (expected v$v or v$v-<suffix>)"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "prerelease=$($env:TAG.Contains('-'))".ToLower() >> $env:GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: dist/linux-x64
+      - name: Package (tests, release build, zips)
+        shell: pwsh
+        run: ./scripts/package-release.ps1
+      - name: Draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          $files = @(
+            "dist/Rebootly-$env:VERSION-windows-x64.zip",
+            "dist/Rebootly-$env:VERSION-windows-x64.zip.sha256",
+            "dist/Rebootly-$env:VERSION-stick.zip",
+            "dist/Rebootly-$env:VERSION-stick.zip.sha256"
+          )
+          foreach ($f in $files) { if (-not (Test-Path $f)) { throw "missing $f" } }
+          $pre = @()
+          if ($env:PRERELEASE -eq "true") { $pre = @("--prerelease") }
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # Re-run for an existing release: replace the files, keep the text.
+            gh release upload $env:TAG @files --clobber
+          } else {
+            gh release create $env:TAG @files --draft --title "Rebootly $env:TAG" --notes-file docs/RELEASE-NOTES.md @pre
+          }
+          if ($LASTEXITCODE -ne 0) { throw "gh failed (exit code $LASTEXITCODE)" }
