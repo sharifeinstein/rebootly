@@ -84,21 +84,7 @@ fn options(a: &RestoreArgs) -> anyhow::Result<RestoreOptions> {
     if let Some(spec) = &a.conflict_for {
         policies.apply(spec).map_err(anyhow::Error::msg)?;
     }
-    let mut drive_map = Vec::new();
-    for m in &a.map_drive {
-        let (from, to) = m
-            .split_once('=')
-            .context("--map-drive takes OLD=NEW, e.g. D=E")?;
-        let letter = |s: &str| {
-            let s = s.trim().trim_end_matches([':', '\\']);
-            (s.len() == 1 && s.as_bytes()[0].is_ascii_alphabetic())
-                .then(|| s.as_bytes()[0].to_ascii_uppercase() as char)
-        };
-        match (letter(from), letter(to)) {
-            (Some(f), Some(t)) => drive_map.push((f, t)),
-            _ => bail!("--map-drive takes drive letters, e.g. D=E (got {m})"),
-        }
-    }
+    let drive_map = drive_map(&a.map_drive)?;
     let apps = match a.apps.to_ascii_lowercase().as_str() {
         "install" => AppsMode::Install,
         "skip" => AppsMode::Skip,
@@ -117,6 +103,26 @@ fn options(a: &RestoreArgs) -> anyhow::Result<RestoreOptions> {
         restart_explorer: !a.no_explorer_restart,
         force: a.force,
     })
+}
+
+/// `--map-drive D=E` values → (old, new) letters.
+pub(crate) fn drive_map(args: &[String]) -> anyhow::Result<Vec<(char, char)>> {
+    let mut out = Vec::new();
+    for m in args {
+        let (from, to) = m
+            .split_once('=')
+            .context("--map-drive takes OLD=NEW, e.g. D=E")?;
+        let letter = |s: &str| {
+            let s = s.trim().trim_end_matches([':', '\\']);
+            (s.len() == 1 && s.as_bytes()[0].is_ascii_alphabetic())
+                .then(|| s.as_bytes()[0].to_ascii_uppercase() as char)
+        };
+        match (letter(from), letter(to)) {
+            (Some(f), Some(t)) => out.push((f, t)),
+            _ => bail!("--map-drive takes drive letters, e.g. D=E (got {m})"),
+        }
+    }
+    Ok(out)
 }
 
 /// The new PC: simulated under a folder, or the running Windows.

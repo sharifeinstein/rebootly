@@ -13,7 +13,7 @@
 pub mod conflict;
 mod files;
 pub mod find;
-mod fit;
+pub(crate) mod fit;
 pub mod host;
 pub mod input;
 pub mod map;
@@ -54,4 +54,4 @@ pub enum RestoreError {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

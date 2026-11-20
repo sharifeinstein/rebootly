@@ -14,13 +14,13 @@ use crate::backup::sensitive::Passphrase;
 use crate::packs::load::load_all;
 use crate::{OfflineVolume, backup};
 
-pub(super) fn pass() -> Passphrase {
+pub(crate) fn pass() -> Passphrase {
     Passphrase::new("correct horse battery".into()).unwrap()
 }
 
 /// Back up the fixture (Alice and the others) with packs, the bundle,
 /// hosts, a task, a phonebook and the `Projects` root folder.
-pub(super) fn make_backup(t: &Path) -> PathBuf {
+pub(crate) fn make_backup(t: &Path) -> PathBuf {
     let root = t.join("vol");
     crate::fixtures::build_win11_basic(&root).unwrap();
     let w = |rel: &str, body: &str| {
@@ -76,7 +76,7 @@ pub(super) fn make_backup(t: &Path) -> PathBuf {
 }
 
 #[derive(Default)]
-pub(super) struct TestHost {
+pub(crate) struct TestHost {
     pub ops: RefCell<Vec<SysOp>>,
     pub running: Vec<String>,
 }
@@ -110,7 +110,7 @@ impl RestoreHost for TestHost {
     }
 }
 
-pub(super) struct Ui {
+pub(crate) struct Ui {
     pub answer: (Policy, bool),
     pub asked: usize,
 }
@@ -135,7 +135,7 @@ impl Interact for Ui {
     fn event(&mut self, _: Event<'_>) {}
 }
 
-pub(super) fn opts() -> RestoreOptions {
+pub(crate) fn opts() -> RestoreOptions {
     RestoreOptions {
         user: Some("Alice".into()),
         tasks: true,
@@ -144,7 +144,7 @@ pub(super) fn opts() -> RestoreOptions {
 }
 
 /// New PC under `t/new`, user `sam`, with a stock hosts file.
-pub(super) fn new_pc(t: &Path) -> Target {
+pub(crate) fn new_pc(t: &Path) -> Target {
     let target = Target::simulated(&t.join("new"), "sam");
     let hosts = target.local(r"C:\Windows\System32\drivers\etc\hosts");
     std::fs::create_dir_all(hosts.parent().unwrap()).unwrap();
@@ -152,7 +152,7 @@ pub(super) fn new_pc(t: &Path) -> Target {
     target
 }
 
-pub(super) fn plan_for(
+pub(crate) fn plan_for(
     b: &Backup,
     target: &Target,
     o: &RestoreOptions,
@@ -161,7 +161,7 @@ pub(super) fn plan_for(
     plan(b, target, &load_all(None).0, o, bundle).unwrap()
 }
 
-pub(super) fn read(target: &Target, win: &str) -> String {
+pub(crate) fn read(target: &Target, win: &str) -> String {
     std::fs::read_to_string(target.local(win)).unwrap_or_else(|e| panic!("{win}: {e}"))
 }
 
@@ -261,7 +261,7 @@ fn restores_into_a_new_user_with_remapping() {
     assert_eq!(files_done, 0, "{}", report::result_text(&p, &r2));
 }
 
-pub(super) fn read_backup(b: &Backup, rel: &str) -> String {
+pub(crate) fn read_backup(b: &Backup, rel: &str) -> String {
     std::fs::read_to_string(b.local(rel).unwrap()).unwrap()
 }
 
@@ -373,7 +373,7 @@ fn extension_folder_names_lose_their_version() {
 }
 
 /// Add a plain file to a finished backup (and its manifest).
-pub(super) fn add_to_backup(dir: &Path, rel: &str, body: &[u8]) {
+pub(crate) fn add_to_backup(dir: &Path, rel: &str, body: &[u8]) {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, body).unwrap();

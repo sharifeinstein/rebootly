@@ -4,6 +4,7 @@
 
 pub mod apps;
 pub mod backup;
+pub mod check;
 pub mod env;
 pub mod expand;
 pub mod folders;

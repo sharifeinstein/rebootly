@@ -2,6 +2,7 @@
 
 mod backup;
 mod backup_text;
+mod check;
 mod pack;
 mod render;
 mod restore;
@@ -62,6 +63,10 @@ enum Cmd {
     Restore(Box<restore::RestoreArgs>),
     /// Undo a restore (puts back replaced files and settings).
     Undo(undo::UndoArgs),
+    /// Re-hash a backup against its manifest (is the copy still good?).
+    Verify(check::VerifyArgs),
+    /// After a restore: check this PC's files against the backup.
+    Compare(Box<check::CompareArgs>),
     /// List or validate app packs.
     #[command(subcommand)]
     Pack(pack::PackCmd),
@@ -122,6 +127,8 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
         Cmd::Backup(args) => backup::run(*args),
         Cmd::Restore(args) => restore::run(*args),
         Cmd::Undo(args) => undo::run(args),
+        Cmd::Verify(args) => check::verify(args),
+        Cmd::Compare(args) => check::compare(*args),
         Cmd::Pack(cmd) => pack::run(cmd),
         Cmd::Sensitive(cmd) => sensitive::run(cmd),
         Cmd::Volumes(args) => volumes::list(args),

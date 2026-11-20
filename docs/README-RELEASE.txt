@@ -90,6 +90,17 @@ Changed your mind? "Undo a restore" puts back everything the restore
 replaced (files you changed since then are kept).
 
 
+CHECKING (COMMAND PROMPT)
+-------------------------
+  rebootly-cli verify <backup folder>
+      reads the whole backup again and checks every file against the
+      list it made (add --sensitive to check the encrypted file too).
+      Do this before you wipe the old PC.
+  rebootly-cli compare <backup folder>
+      after a restore, on the new PC as the restored user: checks that
+      every file of the backup is there (settings aren't compared).
+
+
 WHAT REBOOTLY NEVER DOES
 ------------------------
 - It never changes the old PC: backing up only reads.
@@ -104,4 +115,5 @@ WHAT REBOOTLY NEVER DOES
 NO WARRANTY
 -----------
 Rebootly is provided "as is", without warranty of any kind (see
-LICENSE.txt). Check your backup before you wipe the old PC.
+LICENSE.txt). Check your backup before you wipe the old PC
+(rebootly-cli verify, see above).
