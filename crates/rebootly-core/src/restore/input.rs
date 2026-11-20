@@ -53,7 +53,7 @@ impl Backup {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Err(RestoreError::NoManifest(dir.display().to_string()));
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(RestoreError::Read(path.display().to_string(), e)),
         };
         let manifest: BackupManifest =
             serde_json::from_slice(&bytes).map_err(|e| RestoreError::BadManifest(e.to_string()))?;

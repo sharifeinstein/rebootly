@@ -96,3 +96,17 @@ fn verify_then_compare_a_simulated_restore() {
     assert_eq!(code, 1);
     assert!(err.contains("no manifest.json"), "{err}");
 }
+
+#[test]
+fn a_bad_path_is_named_once() {
+    let t = tempfile::tempdir().unwrap();
+    let file = t.path().join("not-a-folder");
+    std::fs::write(&file, b"x").unwrap();
+    let (code, _, err) = rebootly(&["verify", file.to_str().unwrap()]);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("can't read") && err.contains("manifest.json"),
+        "{err}"
+    );
+    assert_eq!(err.matches("os error").count(), 1, "{err}");
+}

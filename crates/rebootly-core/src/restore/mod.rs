@@ -39,8 +39,12 @@ pub use target::{PathStyle, Target};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RestoreError {
-    #[error("{0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// A file that couldn't be read, and why (not a source: `{:#}` would
+    /// print the OS error twice).
+    #[error("can't read {0}: {1}")]
+    Read(String, std::io::Error),
     #[error("{0} has no manifest.json (is it a Rebootly backup folder?)")]
     NoManifest(String),
     #[error("manifest.json can't be read: {0}")]
