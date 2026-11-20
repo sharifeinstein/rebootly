@@ -177,11 +177,14 @@ fn target(a: &CompareArgs, backup: &Backup, opts: &RestoreOptions) -> anyhow::Re
 }
 
 /// One progress line on stderr, redrawn at most 4 times a second; only on
-/// a terminal.
+/// a terminal. It ends with a final "done" line and a line break instead of
+/// erasing itself: on the owner's Windows console the erased line's spaces
+/// stayed in front of the report.
 struct Bar {
     what: &'static str,
     on: bool,
     last: Option<Instant>,
+    seen: Progress,
 }
 
 impl Bar {
@@ -190,10 +193,12 @@ impl Bar {
             what,
             on: std::io::stderr().is_terminal(),
             last: None,
+            seen: Progress::default(),
         }
     }
 
     fn show(&mut self, p: &Progress) {
+        self.seen = *p;
         if !self.on
             || self
                 .last
@@ -203,21 +208,24 @@ impl Bar {
         }
         self.last = Some(Instant::now());
         let mut e = std::io::stderr();
-        let _ = write!(
-            e,
-            "\r{}: {}/{} files, {} of {}   ",
+        let _ = write!(e, "\r{}   ", self.line(p));
+        let _ = e.flush();
+    }
+
+    fn line(&self, p: &Progress) -> String {
+        format!(
+            "{}: {}/{} files, {} of {}",
             self.what,
             p.files,
             p.total_files,
             gib(p.bytes),
             gib(p.total_bytes)
-        );
-        let _ = e.flush();
+        )
     }
 
     fn done(&mut self) {
         if self.on && self.last.is_some() {
-            eprint!("\r{:79}\r", "");
+            eprintln!("\r{}, done.   ", self.line(&self.seen));
         }
     }
 }
