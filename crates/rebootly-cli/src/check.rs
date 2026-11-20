@@ -44,6 +44,9 @@ pub struct CompareArgs {
     /// As given to the restore: app settings (packs) weren't restored.
     #[arg(long)]
     pub no_packs: bool,
+    /// As given to the restore: hosts and the VPN phonebook weren't restored.
+    #[arg(long)]
+    pub no_system: bool,
     /// Also compare the files from sensitive.age (SSH keys and similar).
     #[arg(long)]
     pub sensitive: bool,
@@ -106,8 +109,10 @@ pub fn compare(a: CompareArgs) -> anyhow::Result<u8> {
         drive_map: crate::restore::drive_map(&a.map_drive)?,
         apps: AppsMode::Skip,
         packs: !a.no_packs,
+        // Hosts and phonebooks are files of the plan; the other system
+        // steps and the registry aren't compared.
         registry: false,
-        system: false,
+        system: !a.no_system,
         restart_explorer: false,
         force: true,
         ..RestoreOptions::default()
